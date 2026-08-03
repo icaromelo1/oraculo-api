@@ -22,8 +22,35 @@ camadas de segurança e conversa com o modelo através de um adaptador plugável
 - **Segurança fica no caminho, não ao lado.** Todo retorno de ferramenta passa pelo módulo
   de segurança: envelopado como dado inerte (nunca instrução), redigido de dado sensível e
   registrado na auditoria.
-- **Uma instância por contexto.** Nada é compartilhado entre instâncias — nem banco, nem
-  corpus, nem sessão.
+- **Uma instalação só.** O Oráculo roda na VM e conhece a stack do próprio dono — não herda
+  conhecimento de cliente.
+
+## Provedor de modelo
+
+`MODEL_PROVIDER=cli` é o padrão e o CLI usado é o **`agy`** (`CLI_COMANDO=agy`,
+`CLI_MODELO=gemini-3.6-flash-low`). O adaptador fala dois dialetos, escolhidos por
+`CLI_DIALETO=auto|claude|agy` (em `auto`, detecta pelo nome do binário) — os formatos de
+saída não têm nada em comum:
+
+| | `claude -p` | `agy -p` |
+|---|---|---|
+| Envelope do evento | `{"type":"stream_event",...}` | `{"event":"step_update",...}` |
+| Texto | `delta.text_delta` do bloco `text` | `step_update.text_delta` de `agent_response` |
+| Fim | `type:"result"` com `total_cost_usd` | `event:"result"` com `status` e `duration_seconds` |
+| System prompt | `--append-system-prompt` | **não existe** — vai dentro do próprio prompt |
+| Desligar ferramentas | `--allowedTools "FerramentaInexistente"` (allowlist vazia) | **não existe** |
+| Streaming | token a token (`--include-partial-messages`) | **um bloco só** por resposta |
+
+Três consequências medidas, que valem saber antes de trocar de dialeto:
+
+- **`agy` não tem allowlist de ferramenta.** Sem `--dangerously-skip-permissions`, uma tentativa
+  de usar ferramenta termina em `status: ERROR` (~11 s) em vez de executar — o modo de falha é
+  seguro, mas quem garante isso é o CLI, não nós. **Nunca** passar `--dangerously-skip-permissions`.
+- **`agy` não faz streaming incremental.** O `text_delta` vem inteiro num único evento, então a
+  resposta aparece de uma vez. Com `claude` o texto pinga token a token.
+- **Latência depende de onde roda.** Na VM, uma resposta trivial leva ~1,8 s; no Mac do dono, o
+  mesmo comando levou ~104 s porque o `agy` de lá carrega os MCPs da sessão de trabalho. O
+  Oráculo roda na VM.
 
 ## Rodando
 

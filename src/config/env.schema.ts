@@ -45,6 +45,8 @@ export const envSchema = z.object({
   MODEL_PROVIDER: z.enum(['cli', 'anthropic', 'openai-compat']).default('cli'),
   CLI_COMANDO: z.string().default('claude -p --output-format stream-json'),
   CLI_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  CLI_DIALETO: z.enum(['auto', 'claude', 'agy']).default('auto'),
+  CLI_MODELO: opcional(z.string()),
   ANTHROPIC_API_KEY: opcional(z.string()),
   ANTHROPIC_MODELO: z.string().default('claude-haiku-4-5-20251001'),
   OPENAI_BASE_URL: opcional(z.string().url()),

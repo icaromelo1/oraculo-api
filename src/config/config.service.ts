@@ -27,6 +27,8 @@ export class OraculoConfig {
       tipo: this.ler('MODEL_PROVIDER'),
       cliComando: this.ler('CLI_COMANDO'),
       cliTimeoutMs: this.ler('CLI_TIMEOUT_MS'),
+      cliDialeto: this.ler('CLI_DIALETO'),
+      cliModelo: this.ler('CLI_MODELO'),
       anthropicChave: this.ler('ANTHROPIC_API_KEY'),
       anthropicModelo: this.ler('ANTHROPIC_MODELO'),
       openaiBaseUrl: this.ler('OPENAI_BASE_URL'),

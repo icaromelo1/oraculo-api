@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { OraculoConfig } from '../config/config.service';
+import { AnalisadorEventosAgy, construirArgvAgy } from './agy.analisador';
 import { EventoProvedor, LlmProvider, PedidoGeracao } from './llm-provider';
 import {
   analisarJsonSeguro,
@@ -184,6 +185,20 @@ function construirPrompt(pedido: PedidoGeracao): string {
     .join('\n\n');
 }
 
+function construirPromptComSistema(pedido: PedidoGeracao): string {
+  return `${pedido.sistema}\n\n${construirPrompt(pedido)}`;
+}
+
+export function resolverDialeto(
+  dialetoConfigurado: 'auto' | 'claude' | 'agy',
+  binario: string,
+): 'claude' | 'agy' {
+  if (dialetoConfigurado !== 'auto') {
+    return dialetoConfigurado;
+  }
+  return binario.split('/').pop() === 'agy' ? 'agy' : 'claude';
+}
+
 function construirArgv(pedido: PedidoGeracao, modelo: string): string[] {
   return [
     '-p',
@@ -210,12 +225,26 @@ export class CliProvider implements LlmProvider {
   constructor(private readonly config: OraculoConfig) {}
 
   async *gerar(pedido: PedidoGeracao): AsyncIterable<EventoProvedor> {
-    const { cliComando, cliTimeoutMs, anthropicModelo } = this.config.provedor;
+    const { cliComando, cliTimeoutMs, cliDialeto, cliModelo, anthropicModelo } =
+      this.config.provedor;
     const binario = extrairBinario(cliComando);
-    const argv = construirArgv(pedido, anthropicModelo);
+    const dialeto = resolverDialeto(cliDialeto, binario);
+
+    const argv =
+      dialeto === 'agy'
+        ? construirArgvAgy(
+            pedido,
+            cliModelo ?? '',
+            cliTimeoutMs,
+            construirPromptComSistema(pedido),
+          )
+        : construirArgv(pedido, cliModelo ?? anthropicModelo);
 
     const fila = new FilaAssincrona<EventoProvedor>();
-    const analisador = new AnalisadorEventosCli();
+    const analisador =
+      dialeto === 'agy'
+        ? new AnalisadorEventosAgy()
+        : new AnalisadorEventosCli();
     let stderrTexto = '';
     let expirou = false;
 
