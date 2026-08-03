@@ -185,6 +185,92 @@ chegou a rodar: `avaliarPedido` grava na hora um registro com `tom = bloqueio` (
 `aprovacao_exigida`), o motivo e os argumentos do pedido, sem depender de o turno terminar. Falha de
 gravação é logada e não derruba o fluxo: o bloqueio vale mesmo se a auditoria cair.
 
+## Motor (`src/engine/`)
+
+`MotorOraculo.responder(pergunta, contexto)` devolve um `AsyncIterable<EventoOraculo>` — a
+pergunta entra, os eventos SSE do turno saem. O laço é:
+
+1. carrega o alcance do perfil (`security.carregarAlcance`) e monta a mensagem de sistema:
+   identidade + a lista de ferramentas de `registry.descreverPara(alcance)` + a convenção de
+   citação + `security.instrucaoDeSistema()`. **O que o perfil não alcança não é descrito** —
+   para o modelo, não existe;
+2. chama o provedor, emite `texto.delta` conforme o texto chega e **descarta `raciocinio`**;
+3. se a resposta tem bloco `oraculo-tool`, avalia cada pedido na política, executa o que for
+   permitido, devolve o retorno protegido ao modelo e repete;
+4. quando o modelo responde sem bloco (ou um teto estoura), fecha com `mensagem.fim`.
+
+### Bloco `oraculo-tool`
+
+O pedido de ferramenta é um bloco cercado no meio da resposta do modelo. O motor tira o bloco do
+texto que vai para o usuário (ele nunca aparece no `texto.delta`) e mantém o texto bruto, com o
+bloco, na mensagem de assistente que volta para o modelo na iteração seguinte:
+
+````
+```oraculo-tool
+{"ferramenta": "ler_arquivo", "argumentos": {"caminho": "/repos/oraculo/src/main.ts"}}
+```
+````
+
+- `ferramenta` (obrigatório, texto) e `argumentos` (opcional, objeto). Mais de um bloco na mesma
+  resposta é atendido na ordem de chegada.
+- **Parse tolerante:** aceita texto solto em volta do JSON, `json` na primeira linha e vírgula
+  sobrando. Se ainda assim não der para ler, o motor **não lança exceção** — devolve ao modelo uma
+  mensagem explicando o que quebrou, e ele tenta de novo dentro do mesmo turno.
+- A cerca de fechamento que não chega até o fim do stream é fechada no encerramento da iteração.
+
+### A política é quem detém
+
+`avaliarPedido` roda **antes** de qualquer execução, para todo pedido, inclusive o de ferramenta
+que o registry nem conhece. O veredito manda:
+
+| Decisão | O que o motor faz |
+|---|---|
+| `permitir` | emite `ferramenta.inicio`, executa via registry, protege o retorno, emite `ferramenta.fim` |
+| `bloquear` | **não executa**; emite `ferramenta.fim` com `status: bloqueada` e devolve ao modelo um aviso de que a ferramenta não rodou |
+| `exigir_aprovacao` | emite `aprovacao.pedido` e, na fase 1, **trata como bloqueio** com motivo `aguardando aprovação` — o fluxo interativo de aprovação é da fase 2 |
+
+`ferramenta.inicio` também é emitido no caminho bloqueado (o front precisa do par início/fim para
+desenhar o cartão), mas `capacidade.executar` só é alcançável depois de um veredito `permitir`.
+Recusa da política volta ao modelo como texto explícito mandando não repetir o pedido nem
+inventar o conteúdo que a ferramenta traria.
+
+### Fonte, citação e cobertura
+
+Todo retorno passa por `security.protegerRetorno` (redação + envelope) antes de voltar ao modelo.
+Cada retorno protegido vira uma `Fonte` com id estável — `sha256(ferramenta, tipo, caminho, meta,
+conteúdo já redigido)` truncado em 12 hex, então o mesmo trecho recuperado duas vezes no turno tem
+o mesmo id e só gera um evento `citacao`. O retorno devolvido ao modelo termina com
+`cite este trecho como [[F:<id>]]`.
+
+A **cobertura é medida por código**, nunca perguntada ao modelo:
+
+- o texto visível do turno (já sem os blocos `oraculo-tool` e já redigido) é quebrado em parágrafos
+  por linha em branco (`\n\s*\n`), descartando os vazios;
+- um parágrafo conta como **citado** se tem ao menos um `[[F:id]]` cujo `id` foi realmente emitido
+  em um evento `citacao` deste turno;
+- marcador com id que o motor não emitiu é **removido do texto** antes de sair no `texto.delta` —
+  citação inventada não vira chip no front nem cobertura;
+- `mensagem.fim` leva `{ citadas, total, semFonte }`, com `semFonte = total - citadas`.
+
+### Janela deslizante na saída
+
+`protegerSaida` é regex sobre texto inteiro, e streaming quebra isso: um segredo partido entre dois
+`texto.delta` não casa com nenhum padrão e escapa. O motor segura os últimos **256 caracteres**
+(`JANELA`, maior que qualquer padrão de segredo) antes de liberar cada delta, e o corte só é aceito
+se `redigir(cabeça) + redigir(cauda) === redigir(texto inteiro)` — a igualdade prova que nenhuma
+ocorrência atravessa o ponto de corte. Se atravessar, o corte recua de 16 em 16 caracteres; se não
+houver corte seguro, nada é liberado nesta rodada e o texto espera o próximo fragmento. Além disso o
+corte nunca cai dentro de um marcador `[[F:` ainda sem fechamento nem depois de um
+`-----BEGIN … PRIVATE KEY-----` que ainda não achou o `-----END`.
+
+### Tetos
+
+`ENGINE_MAX_ITERACOES` limita as voltas do laço e `ENGINE_MAX_TOKENS_SAIDA` é o teto por chamada ao
+provedor; o teto de custo do turno inteiro é o produto dos dois. Estourar qualquer um dos dois emite
+um evento `erro` (`limite_iteracoes` / `limite_tokens`, ambos retomáveis) e o turno ainda fecha com
+`mensagem.fim`. O turno é gravado em `security.registrar` num `finally` — inclusive quando o
+consumidor abandona o stream no meio.
+
 ## Contrato de eventos
 
 `POST /chat` recebe um `PedidoChat` (`conversaId` opcional, `pergunta`, `escopo` opcional) e
