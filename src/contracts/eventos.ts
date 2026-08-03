@@ -4,6 +4,7 @@ export type NivelAutoridade = 1 | 2 | 3 | 4;
 
 export type NomeFerramenta =
   | 'buscar_conhecimento'
+  | 'buscar_codigo'
   | 'ler_arquivo'
   | 'consultar_banco'
   | 'ler_documento'

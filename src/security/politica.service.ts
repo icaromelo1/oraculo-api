@@ -22,6 +22,7 @@ interface DefinicaoCapacidade {
 const CATALOGO: Record<string, DefinicaoCapacidade> = {
   buscar_conhecimento: { alvo: 'conhecimento', sensivel: false },
   ler_documento: { alvo: 'conhecimento', sensivel: false },
+  buscar_codigo: { alvo: 'codigo', sensivel: false },
   ler_arquivo: { alvo: 'codigo', sensivel: false },
   consultar_banco: { alvo: 'banco', sensivel: true },
   estado_servicos: { alvo: 'estado', sensivel: true },
