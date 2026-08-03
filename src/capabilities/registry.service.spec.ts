@@ -1,4 +1,5 @@
 import { OraculoConfig } from '../config/config.service';
+import { StatusPerfilCapacidade } from '../database/entities';
 import type { AlcancePerfil } from '../security/tipos';
 import { Capacidade } from './capacidade';
 import { RegistryCapacidades } from './registry.service';
@@ -41,9 +42,21 @@ const alcance: AlcancePerfil = {
   perfilId: 'p1',
   perfil: 'dono',
   capacidades: [
-    { capacidade: 'buscar_conhecimento', status: 'permitida', escopo: null },
-    { capacidade: 'consultar_banco', status: 'aprovacao', escopo: null },
-    { capacidade: 'estado_servicos', status: 'negada', escopo: null },
+    {
+      capacidade: 'buscar_conhecimento',
+      status: StatusPerfilCapacidade.PERMITIDA,
+      escopo: null,
+    },
+    {
+      capacidade: 'consultar_banco',
+      status: StatusPerfilCapacidade.APROVACAO,
+      escopo: null,
+    },
+    {
+      capacidade: 'estado_servicos',
+      status: StatusPerfilCapacidade.NEGADA,
+      escopo: null,
+    },
   ],
 };
 

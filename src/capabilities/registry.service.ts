@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { OraculoConfig } from '../config/config.service';
+import { StatusPerfilCapacidade } from '../database/entities';
 import type { NomeFerramenta } from '../contracts/eventos';
 import type { AlcancePerfil } from '../security/tipos';
 import { CAPACIDADE, Capacidade } from './capacidade';
@@ -29,7 +30,9 @@ export class RegistryCapacidades {
     const linha = alcance.capacidades.find(
       (item) => item.capacidade === capacidade.nome,
     );
-    return linha !== undefined && linha.status !== 'negada';
+    return (
+      linha !== undefined && linha.status !== StatusPerfilCapacidade.NEGADA
+    );
   }
 
   disponiveisPara(alcance: AlcancePerfil): Capacidade[] {
