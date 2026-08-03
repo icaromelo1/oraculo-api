@@ -33,6 +33,43 @@ npm install
 npm run start:dev
 ```
 
+## Contrato de eventos
+
+`POST /chat` recebe um `PedidoChat` (`conversaId` opcional, `pergunta`, `escopo` opcional) e
+responde via Server-Sent Events. Os tipos ficam em `src/contracts/eventos.ts` e são espelhados —
+com os mesmos nomes de campo — em `oraculo-ui/src/types/eventos.ts`, importando os tipos de
+domínio (`Fonte`, `Cobertura`, `Escopo`, `NomeFerramenta`, `StatusFerramenta`) de
+`oraculo-ui/src/types/oraculo.ts`.
+
+Cada evento é um `EventoOraculo`, discriminado pelo campo `tipo`:
+
+| `tipo` | Carga |
+|---|---|
+| `mensagem.inicio` | `id`, `conversaId`, `modelo`, `escopo` |
+| `ferramenta.inicio` | `id`, `nome`, `argumento`, `sensivel` |
+| `ferramenta.fim` | `id`, `status`, `metrica`, `plano?`, `aprovadaPor?`, `resultado` |
+| `texto.delta` | `fragmento` |
+| `citacao` | `fonte` (objeto `Fonte` completo) |
+| `aprovacao.pedido` | `id`, `comando`, `alvo`, `efeitoColateral`, `politica`, `expiraEm` |
+| `mensagem.fim` | `cobertura`, `tokens`, `duracaoMs` |
+| `erro` | `codigo`, `mensagem`, `retomavel` |
+
+`serializarEvento(evento)` converte um `EventoOraculo` no frame SSE pronto:
+
+```
+event: <tipo>
+data: <json>
+
+```
+
+### Marcador de citação `[[F:id]]`
+
+Fragmentos de `texto.delta` podem conter marcadores no formato `[[F:id]]`, onde `id` referencia
+o `id` de uma `Fonte` emitida (no mesmo turno) por um evento `citacao`. O front substitui cada
+marcador por um chip clicável que abre o painel de fontes na fonte correspondente — a citação
+pode chegar antes ou depois do trecho de texto que a referencia, então o front deve resolver o
+marcador de forma tolerante à ordem de chegada.
+
 ## Front
 
 O cliente web fica em [oraculo-ui](https://github.com/icaroMelo1/oraculo-ui).
