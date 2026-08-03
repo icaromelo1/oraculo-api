@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { readFile } from 'node:fs/promises';
+import { pareceBinario } from '../capabilities/codigo/binario';
 import { Repository } from 'typeorm';
 import { Documento, Trecho } from '../database/entities';
 import { quebrarDocumento } from './chunking';
@@ -14,6 +15,7 @@ export interface ResumoIndexacao {
   documentosInalterados: number;
   trechosGerados: number;
   recusadosPelaDenylist: number;
+  binariosIgnorados: number;
   duracaoMs: number;
 }
 
@@ -38,9 +40,17 @@ export class IndexacaoService {
     let documentosAtualizados = 0;
     let documentosInalterados = 0;
     let trechosGerados = 0;
+    let binariosIgnorados = 0;
 
     for (const arquivo of arquivos) {
-      const conteudo = await readFile(arquivo.caminhoAbsoluto, 'utf-8');
+      const bruto = await readFile(arquivo.caminhoAbsoluto);
+
+      if (pareceBinario(bruto)) {
+        binariosIgnorados += 1;
+        continue;
+      }
+
+      const conteudo = bruto.toString('utf-8').replace(/\u0000/g, '');
       const procedencia = construirProcedencia(
         arquivo.caminhoAbsoluto,
         conteudo,
@@ -104,7 +114,8 @@ export class IndexacaoService {
     this.logger.log(
       `indexação concluída — ${documentosNovos} novos, ${documentosAtualizados} atualizados, ` +
         `${documentosInalterados} inalterados, ${trechosGerados} trechos, ` +
-        `${recusadosPelaDenylist} recusados pela denylist, ${duracaoMs}ms`,
+        `${recusadosPelaDenylist} recusados pela denylist, ` +
+        `${binariosIgnorados} binários ignorados, ${duracaoMs}ms`,
     );
 
     return {
@@ -113,6 +124,7 @@ export class IndexacaoService {
       documentosInalterados,
       trechosGerados,
       recusadosPelaDenylist,
+      binariosIgnorados,
       duracaoMs,
     };
   }
