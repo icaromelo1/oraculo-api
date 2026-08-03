@@ -81,7 +81,9 @@ export class PoliticaService {
     }
 
     const linha = pedido.alcance?.capacidades?.find(
-      (item) => item.capacidade === pedido.capacidade,
+      (item) =>
+        item.capacidade === pedido.capacidade ||
+        item.capacidade === definicao.alvo,
     );
 
     if (!linha) {

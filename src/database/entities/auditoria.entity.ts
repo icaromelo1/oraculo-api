@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -9,6 +10,8 @@ import {
 import { Usuario } from './usuario.entity';
 
 @Entity('auditoria')
+@Index('idx_auditoria_criada_em', ['criadaEm'])
+@Index('idx_auditoria_usuario_criada_em', ['usuario', 'criadaEm'])
 export class Auditoria {
   @PrimaryGeneratedColumn('uuid')
   id: string;

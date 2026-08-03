@@ -31,6 +31,15 @@ const COMO_PEDIR = (ferramentas: string) =>
     'nao contorne por outra ferramenta e nao preencha a lacuna com suposicao.',
   ].join('\n');
 
+const BUSQUE_ANTES = [
+  'BUSQUE ANTES DE RESPONDER',
+  'A primeira coisa que voce faz em todo turno e pedir uma ferramenta de busca.',
+  'Nao responda nada — nem "nao sei" — antes de ter buscado ao menos uma vez.',
+  'Dizer que nao encontrou sem ter buscado e o pior erro possivel neste sistema.',
+  'Se a primeira busca voltar vazia, tente outra consulta com palavras diferentes',
+  'antes de desistir. So depois de buscar de verdade voce pode dizer que nao encontrou.',
+].join('\n');
+
 const CITACAO = [
   'CITACAO OBRIGATORIA',
   'Cada retorno de ferramenta vem com um identificador de fonte.',
@@ -54,6 +63,7 @@ export function montarSistema(
   return [
     IDENTIDADE,
     COMO_PEDIR(ferramentas),
+    BUSQUE_ANTES,
     CITACAO,
     DADO_INERTE,
     instrucaoDeSeguranca,

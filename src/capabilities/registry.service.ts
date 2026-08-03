@@ -28,7 +28,9 @@ export class RegistryCapacidades {
 
   alcancadaPeloPerfil(capacidade: Capacidade, alcance: AlcancePerfil): boolean {
     const linha = alcance.capacidades.find(
-      (item) => item.capacidade === capacidade.nome,
+      (item) =>
+        item.capacidade === capacidade.nome ||
+        item.capacidade === capacidade.chaveEnv,
     );
     return (
       linha !== undefined && linha.status !== StatusPerfilCapacidade.NEGADA
