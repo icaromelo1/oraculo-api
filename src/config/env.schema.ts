@@ -10,7 +10,10 @@ const lista = (padrao = '') =>
   z.string().default(padrao).transform(separarLista);
 
 const opcional = <T extends z.ZodType>(schema: T) =>
-  z.preprocess((valor) => (valor === '' ? undefined : valor), schema.optional());
+  z.preprocess(
+    (valor) => (valor === '' ? undefined : valor),
+    schema.optional(),
+  );
 
 const capacidade = (padrao: 'on' | 'off') =>
   z
