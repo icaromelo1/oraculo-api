@@ -1,0 +1,55 @@
+services:
+  oraculo-db:
+    image: pgvector/pgvector:pg17
+    container_name: oraculo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: oraculo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: oraculo
+    volumes:
+      - oraculo-db-data:/var/lib/postgresql/data
+    networks: [oraculo-net]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U oraculo -d oraculo']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  oraculo-api:
+    build:
+      context: ./app
+    container_name: oraculo-api
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ${HOME}/.local/bin/agy:/usr/local/bin/agy:ro
+      - ${HOME}/.gemini:/root/.gemini
+      - ${HOME}/.claude/projects:/corpus/claude-projects:ro
+      - ${HOME}/claude-workspace-config:/corpus/workspace-config:ro
+      - ${HOME}/infra:/corpus/infra:ro
+      - ${HOME}/projects:/corpus/projects:ro
+      - ${HOME}/oraculo-workspace:/corpus/oraculo-workspace:ro
+      - oraculo-modelos:/app/.cache/transformers
+    networks: [oraculo-net, web]
+    depends_on:
+      oraculo-db:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.oraculo-api.rule=(Host(`icaromelodev.com.br`) || Host(`www.icaromelodev.com.br`)) && PathPrefix(`/oraculo-api`)
+      - traefik.http.routers.oraculo-api.priority=200
+      - traefik.http.routers.oraculo-api.entrypoints=websecure
+      - traefik.http.routers.oraculo-api.tls.certresolver=le
+      - traefik.http.routers.oraculo-api.middlewares=oraculo-api-strip
+      - traefik.http.middlewares.oraculo-api-strip.stripprefix.prefixes=/oraculo-api
+      - traefik.http.services.oraculo-api.loadbalancer.server.port=3000
+
+volumes:
+  oraculo-db-data:
+  oraculo-modelos:
+
+networks:
+  web:
+    external: true
+  oraculo-net:
