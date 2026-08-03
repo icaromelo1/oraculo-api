@@ -49,6 +49,7 @@ export class OraculoConfig {
     return {
       fontes: this.ler('CORPUS_FONTES'),
       negados: this.ler('CORPUS_NEGADOS'),
+      exibicao: this.ler('CAMINHO_EXIBICAO'),
     };
   }
 

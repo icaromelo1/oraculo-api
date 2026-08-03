@@ -59,6 +59,7 @@ export const envSchema = z.object({
 
   CORPUS_FONTES: lista(),
   CORPUS_NEGADOS: lista(NEGADOS_PADRAO),
+  CAMINHO_EXIBICAO: lista(),
 
   CAP_CONHECIMENTO: capacidade('on'),
   CAP_CODIGO: capacidade('on'),

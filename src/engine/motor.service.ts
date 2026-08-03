@@ -12,6 +12,7 @@ import { SecurityService } from '../security/security.service';
 import type { AlcancePerfil, OcorrenciaRedacao } from '../security/tipos';
 import { calcularCobertura } from './cobertura';
 import { FluxoResposta } from './fluxo-resposta';
+import { lerMapaExibicao } from './caminho-exibicao';
 import { construirFonte } from './fonte';
 import { montarSistema } from './instrucao';
 import {
@@ -62,6 +63,10 @@ export class MotorOraculo {
     private readonly security: SecurityService,
     private readonly config: OraculoConfig,
   ) {}
+
+  private get mapaExibicao() {
+    return lerMapaExibicao(this.config.corpus?.exibicao ?? []);
+  }
 
   async *responder(
     pergunta: string,
@@ -363,7 +368,7 @@ export class MotorOraculo {
         const protegido = this.security.protegerRetorno(retorno);
         redacoes.push(...protegido.redacao.ocorrencias);
 
-        const fonte = construirFonte(retorno, protegido);
+        const fonte = construirFonte(retorno, protegido, this.mapaExibicao);
 
         if (!ambiente.estado.fontes.has(fonte.id)) {
           ambiente.estado.fontes.set(fonte.id, fonte);
