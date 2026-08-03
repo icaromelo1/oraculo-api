@@ -30,7 +30,27 @@ camadas de segurança e conversa com o modelo através de um adaptador plugável
 ```bash
 nvm use            # Node 24 (.nvmrc)
 npm install
+cp .env.example .env
+docker compose up -d       # oraculo-db (Postgres 17 + pgvector) na porta 5434
+npm run migration:run
 npm run start:dev
+```
+
+## Migrations
+
+Sempre pelo CLI (`npm run migration:generate -- src/database/migrations/NomeDaMigration`),
+nunca escrevendo o arquivo do zero.
+
+⚠️ **Armadilha conhecida:** toda migration gerada vem com um
+`DROP INDEX "public"."idx_trecho_embedding"` espúrio. O índice `ivfflat` do campo `embedding` não
+existe no metamodelo do TypeORM (o decorator `@Index` só conhece btree/hash/gist/spgist/gin/brin),
+então o diff o interpreta como índice órfão e propõe removê-lo — junto com o `down()` recriando
+uma versão errada, sem `vector_cosine_ops`. **Apague as duas linhas antes de rodar a migration.**
+O índice correto é criado uma única vez na `InicialSchema`:
+
+```sql
+CREATE INDEX "idx_trecho_embedding" ON "trecho"
+  USING ivfflat ("embedding" vector_cosine_ops) WITH (lists = 100)
 ```
 
 ## Contrato de eventos

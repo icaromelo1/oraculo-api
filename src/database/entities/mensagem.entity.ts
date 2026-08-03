@@ -1,6 +1,8 @@
 import {
   Column,
+  CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -13,6 +15,7 @@ export enum PapelMensagem {
 }
 
 @Entity('mensagem')
+@Index('idx_mensagem_conversa_ordem', ['conversa', 'ordem'])
 export class Mensagem {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -20,6 +23,12 @@ export class Mensagem {
   @ManyToOne(() => Conversa, { nullable: false })
   @JoinColumn({ name: 'conversa_id' })
   conversa: Conversa;
+
+  @Column({ type: 'integer' })
+  ordem: number;
+
+  @CreateDateColumn({ type: 'timestamptz', name: 'criada_em' })
+  criadaEm: Date;
 
   @Column({
     type: 'enum',

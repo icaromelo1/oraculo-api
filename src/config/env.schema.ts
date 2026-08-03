@@ -9,6 +9,9 @@ const separarLista = (valor: string) =>
 const lista = (padrao = '') =>
   z.string().default(padrao).transform(separarLista);
 
+const opcional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((valor) => (valor === '' ? undefined : valor), schema.optional());
+
 const capacidade = (padrao: 'on' | 'off') =>
   z
     .enum(['on', 'off'])
@@ -39,11 +42,11 @@ export const envSchema = z.object({
   MODEL_PROVIDER: z.enum(['cli', 'anthropic', 'openai-compat']).default('cli'),
   CLI_COMANDO: z.string().default('claude -p --output-format stream-json'),
   CLI_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
-  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: opcional(z.string()),
   ANTHROPIC_MODELO: z.string().default('claude-haiku-4-5-20251001'),
-  OPENAI_BASE_URL: z.string().url().optional(),
-  OPENAI_API_KEY: z.string().optional(),
-  OPENAI_MODELO: z.string().optional(),
+  OPENAI_BASE_URL: opcional(z.string().url()),
+  OPENAI_API_KEY: opcional(z.string()),
+  OPENAI_MODELO: opcional(z.string()),
 
   RETRIEVAL_MODE: z.enum(['hibrido', 'lexical', 'vetorial']).default('hibrido'),
   EMBEDDING_MODELO: z.string().default('Xenova/multilingual-e5-small'),
@@ -72,7 +75,7 @@ export const envSchema = z.object({
   ENGINE_MAX_ITERACOES: z.coerce.number().int().positive().default(8),
   ENGINE_MAX_TOKENS_SAIDA: z.coerce.number().int().positive().default(4000),
 
-  GITHUB_TOKEN: z.string().optional(),
+  GITHUB_TOKEN: opcional(z.string()),
   GITHUB_USUARIO: z.string().default('icaroMelo1'),
 });
 
