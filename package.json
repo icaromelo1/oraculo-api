@@ -22,7 +22,9 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
-    "stack:sync": "ts-node scripts/stack-sync.ts"
+    "corpus:index": "ts-node -r tsconfig-paths/register src/corpus/indexar.ts",
+    "stack:sync": "ts-node scripts/stack-sync.ts",
+    "auth:seed": "ts-node -r tsconfig-paths/register src/auth/seed.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
