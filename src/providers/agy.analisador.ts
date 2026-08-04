@@ -76,11 +76,15 @@ export class AnalisadorEventosAgy {
     );
 
     if (status !== undefined && status !== 'SUCCESS') {
+      const detalhe = lerString(bruto.error);
+
       return [
         {
           tipo: 'erro',
           codigo: 'agy_status_nao_sucesso',
-          mensagem: `agy terminou com status ${status}`,
+          mensagem: detalhe
+            ? `agy indisponível: ${detalhe}`
+            : `agy terminou com status ${status}`,
           retomavel: true,
         },
       ];

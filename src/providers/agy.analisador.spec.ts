@@ -150,3 +150,26 @@ describe('resolverDialeto', () => {
     expect(resolverDialeto('agy', 'claude')).toBe('agy');
   });
 });
+
+describe('erro do agy com detalhe', () => {
+  it('mostra a mensagem real do provedor quando existe', () => {
+    const analisador = new AnalisadorEventosAgy();
+    const eventos = analisador.processarChunk(
+      JSON.stringify({
+        event: 'result',
+        result: {
+          status: 'ERROR',
+          error: 'Eligibility check failed: UNAVAILABLE (code 503)',
+          usage: {},
+        },
+      }) + '\n',
+    );
+
+    expect(eventos[0]).toEqual({
+      tipo: 'erro',
+      codigo: 'agy_status_nao_sucesso',
+      mensagem: 'agy indisponível: Eligibility check failed: UNAVAILABLE (code 503)',
+      retomavel: true,
+    });
+  });
+});
