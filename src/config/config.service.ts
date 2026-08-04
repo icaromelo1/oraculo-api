@@ -78,6 +78,10 @@ export class OraculoConfig {
     };
   }
 
+  get segredoDeConfiguracao() {
+    return this.ler('CONFIG_SECRET') ?? this.ler('JWT_SECRET');
+  }
+
   get engine() {
     return {
       maxIteracoes: this.ler('ENGINE_MAX_ITERACOES'),

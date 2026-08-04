@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { OraculoConfig } from '../config/config.service';
+import { ConfiguracaoService } from '../config/configuracao.service';
 import { StatusPerfilCapacidade } from '../database/entities';
 import type { NomeFerramenta } from '../contracts/eventos';
 import type { AlcancePerfil } from '../security/tipos';
@@ -12,6 +13,7 @@ export class RegistryCapacidades {
   constructor(
     private readonly config: OraculoConfig,
     @Optional() @Inject(CAPACIDADE) capacidades: Capacidade[] | null,
+    @Optional() private readonly configuracao?: ConfiguracaoService,
   ) {
     for (const capacidade of capacidades ?? []) {
       this.porNome.set(capacidade.nome, capacidade);
@@ -23,7 +25,13 @@ export class RegistryCapacidades {
   }
 
   ligadaNaInstalacao(capacidade: Capacidade): boolean {
-    return this.config.capacidades[capacidade.chaveEnv];
+    const tetoDoEnv = this.config.capacidades[capacidade.chaveEnv];
+
+    if (!tetoDoEnv || !this.configuracao) {
+      return tetoDoEnv;
+    }
+
+    return this.configuracao.capacidadeLigada(capacidade.chaveEnv);
   }
 
   alcancadaPeloPerfil(capacidade: Capacidade, alcance: AlcancePerfil): boolean {

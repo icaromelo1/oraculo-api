@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfiguracaoModule } from '../config/configuracao.module';
 import { Documento, Trecho } from '../database/entities';
 import { EmbeddingService } from '../corpus/embedding.service';
 import { CAPACIDADE, Capacidade } from './capacidade';
@@ -9,7 +10,7 @@ import { BuscarCodigoCapacidade, LerArquivoCapacidade } from './codigo';
 import { RegistryCapacidades } from './registry.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Documento, Trecho])],
+  imports: [ConfiguracaoModule, TypeOrmModule.forFeature([Documento, Trecho])],
   providers: [
     RegistryCapacidades,
     EmbeddingService,

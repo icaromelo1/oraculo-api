@@ -76,6 +76,10 @@ export const envSchema = z.object({
     .min(32, 'JWT_SECRET precisa de ao menos 32 caracteres'),
   JWT_TTL: z.string().default('12h'),
 
+  CONFIG_SECRET: opcional(
+    z.string().min(32, 'CONFIG_SECRET precisa de ao menos 32 caracteres'),
+  ),
+
   GUARD_MODE: z.enum(['on', 'off']).default('off'),
 
   ENGINE_MAX_ITERACOES: z.coerce.number().int().positive().default(8),
@@ -83,6 +87,7 @@ export const envSchema = z.object({
 
   GITHUB_TOKEN: opcional(z.string()),
   GITHUB_USUARIO: z.string().default('icaroMelo1'),
+  USUARIO_DONO: z.string().default('ubuntu'),
 });
 
 export type Env = z.infer<typeof envSchema>;

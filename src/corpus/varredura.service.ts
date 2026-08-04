@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import fg from 'fast-glob';
 import { relative, resolve } from 'node:path';
 import { OraculoConfig } from '../config/config.service';
+import { ConfiguracaoService } from '../config/configuracao.service';
 import { caminhoNegado } from './denylist';
 
 const PADROES_PERMITIDOS = [
@@ -32,10 +33,17 @@ export interface ResultadoVarredura {
 
 @Injectable()
 export class VarreduraService {
-  constructor(private readonly config: OraculoConfig) {}
+  constructor(
+    private readonly config: OraculoConfig,
+    @Optional() private readonly configuracao?: ConfiguracaoService,
+  ) {}
 
   async varrer(): Promise<ResultadoVarredura> {
-    return varrerFontes(this.config.corpus.fontes, this.config.corpus.negados);
+    const caminhos = this.configuracao
+      ? (await this.configuracao.fontesEfetivas()).map((fonte) => fonte.caminho)
+      : this.config.corpus.fontes;
+
+    return varrerFontes(caminhos, this.config.corpus.negados);
   }
 }
 

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { AmbienteModule } from './ambiente/ambiente.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './auth/auth.guard';
@@ -26,6 +27,7 @@ import { SecurityModule } from './security/security.module';
     EngineModule,
     ChatModule,
     AuditoriaModule,
+    AmbienteModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
 })

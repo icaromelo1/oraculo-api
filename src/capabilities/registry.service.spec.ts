@@ -1,4 +1,5 @@
 import { OraculoConfig } from '../config/config.service';
+import { ConfiguracaoService } from '../config/configuracao.service';
 import { StatusPerfilCapacidade } from '../database/entities';
 import type { AlcancePerfil } from '../security/tipos';
 import { Capacidade } from './capacidade';
@@ -134,5 +135,33 @@ describe('RegistryCapacidades', () => {
     expect(registry.descreverPara(alcance)).toBe(
       'Nenhuma ferramenta está disponível nesta sessão.',
     );
+  });
+
+  it('respeita o recorte do ConfiguracaoService quando ele existe', () => {
+    const configuracao = {
+      capacidadeLigada: (nome: string) => nome !== 'banco',
+    } as unknown as ConfiguracaoService;
+
+    const registry = new RegistryCapacidades(
+      configFalsa({ banco: true }),
+      [conhecimento, banco],
+      configuracao,
+    );
+
+    expect(registry.disponiveisPara(alcance)).toEqual([conhecimento]);
+  });
+
+  it('nunca amplia o que o ENV proíbe, mesmo com o ConfiguracaoService', () => {
+    const configuracao = {
+      capacidadeLigada: () => true,
+    } as unknown as ConfiguracaoService;
+
+    const registry = new RegistryCapacidades(
+      configFalsa({ banco: false }),
+      [conhecimento, banco],
+      configuracao,
+    );
+
+    expect(registry.disponiveisPara(alcance)).toEqual([conhecimento]);
   });
 });

@@ -1,8 +1,10 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { OraculoConfig } from '../config/config.service';
+import { ConfiguracaoService } from '../config/configuracao.service';
 import { NEGADOS_PADRAO } from '../config/env.schema';
-import { varrerFontes } from './varredura.service';
+import { VarreduraService, varrerFontes } from './varredura.service';
 
 describe('varrerFontes', () => {
   let raiz: string;
@@ -42,5 +44,32 @@ describe('varrerFontes', () => {
       [join(raiz, 'docker-compose.yml'), join(raiz, 'normal.md')].sort(),
     );
     expect(resultado.recusadosPelaDenylist).toBe(2);
+  });
+
+  it('varre as fontes efetivas do ConfiguracaoService, não as do ENV', async () => {
+    const config = {
+      corpus: {
+        fontes: ['/caminho/que/nao/existe'],
+        negados: NEGADOS_PADRAO.split(','),
+      },
+    } as unknown as OraculoConfig;
+
+    const configuracao = {
+      fontesEfetivas: jest.fn().mockResolvedValue([
+        {
+          id: null,
+          caminho: raiz,
+          rotulo: 'raiz',
+          origem: 'banco',
+          removivel: true,
+        },
+      ]),
+    } as unknown as ConfiguracaoService;
+
+    const resultado = await new VarreduraService(config, configuracao).varrer();
+
+    expect(resultado.arquivos.map((a) => a.caminhoAbsoluto).sort()).toEqual(
+      [join(raiz, 'docker-compose.yml'), join(raiz, 'normal.md')].sort(),
+    );
   });
 });
