@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { userInfo } from 'os';
 import type { OcorrenciaRedacao, ResultadoRedacao, TipoSegredo } from './tipos';
 
 const ABRE = '\u0001';
@@ -210,9 +211,138 @@ const PADROES: Padrao[] = [
   },
 ];
 
+const IPV4_OCTETO = '(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+
+const IPV4_REGEX = new RegExp(
+  `\\b(${IPV4_OCTETO}(?:\\.${IPV4_OCTETO}){3})(:(\\d{1,5}))?(\\/\\d{1,2})?\\b`,
+  'g',
+);
+
+const ipv4Preservado = (grupos: string[]): boolean =>
+  grupos[1] === '127.0.0.1' || Boolean(grupos[4]);
+
+const IPV6_GRUPO = '[0-9A-Fa-f]{1,4}';
+
+const IPV6_LIMITE_ANTES = '(?<![0-9A-Fa-f:.])';
+const IPV6_LIMITE_DEPOIS = '(?![0-9A-Fa-f:.])';
+
+const IPV6_ALTERNATIVAS = [
+  `(?:${IPV6_GRUPO}:){7}${IPV6_GRUPO}`,
+  `(?:${IPV6_GRUPO}:){1,7}:`,
+  `(?:${IPV6_GRUPO}:){1,6}:${IPV6_GRUPO}`,
+  `(?:${IPV6_GRUPO}:){1,5}(?::${IPV6_GRUPO}){1,2}`,
+  `(?:${IPV6_GRUPO}:){1,4}(?::${IPV6_GRUPO}){1,3}`,
+  `(?:${IPV6_GRUPO}:){1,3}(?::${IPV6_GRUPO}){1,4}`,
+  `(?:${IPV6_GRUPO}:){1,2}(?::${IPV6_GRUPO}){1,5}`,
+  `${IPV6_GRUPO}:(?:(?::${IPV6_GRUPO}){1,6})`,
+  `:(?:(?::${IPV6_GRUPO}){1,7}|:)`,
+].join('|');
+
+const IPV6_REGEX = new RegExp(
+  `${IPV6_LIMITE_ANTES}(${IPV6_ALTERNATIVAS})(\\/\\d{1,3})?${IPV6_LIMITE_DEPOIS}`,
+  'g',
+);
+
+const ipv6Preservado = (grupos: string[]): boolean => {
+  const valor = grupos[1].toLowerCase();
+
+  return valor === '::1' || Boolean(grupos[2]);
+};
+
+const IPV6_COLCHETE_REGEX = /\[([0-9A-Fa-f:]+)\]:(\d{1,5})/g;
+
+const ipv6ColcheteMontar = (grupos: string[], mascara: string): string =>
+  `${mascara}:${grupos[2]}`;
+
+const IPV6_CORINGA_REGEX = /:::(\d{1,5})\b/g;
+
+const ipv6CoringaMontar = (grupos: string[], mascara: string): string =>
+  `${mascara}:${grupos[1]}`;
+
+const MAC_REGEX = /\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b/g;
+
+const ROTULO_HOST = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?';
+
+const GUARDA_CAMINHO = '(?<![^/]\\/)';
+
+const FQDN_CONTEXTO_REGEX = new RegExp(
+  `(?<=:\\/\\/|@)${GUARDA_CAMINHO}((?:${ROTULO_HOST}\\.)+[A-Za-z]{2,63})\\b(:(\\d{1,5}))?`,
+  'g',
+);
+
+const FQDN_ESTRUTURA_REGEX = new RegExp(
+  `\\b${GUARDA_CAMINHO}((?:${ROTULO_HOST}\\.){2,}[A-Za-z]{2,63})\\b(:(\\d{1,5}))?`,
+  'g',
+);
+
+const USUARIO_ATUAL = process.env.USUARIO_DONO?.trim() || userInfo().username;
+
+const escaparRegex = (valor: string): string =>
+  valor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const HOME_ALHEIO_REGEX = new RegExp(
+  `(\\/home\\/)(?!${escaparRegex(USUARIO_ATUAL)}(?:\\/|$))([A-Za-z0-9_.-]+)`,
+  'g',
+);
+
+const preservarPortaOuVazio = (grupos: string[], mascara: string): string =>
+  `${mascara}${grupos[2] ?? ''}`;
+
+const PADROES_DIAGNOSTICO: Padrao[] = [
+  {
+    tipo: 'ip',
+    expressao: MAC_REGEX,
+  },
+  {
+    tipo: 'ip',
+    expressao: IPV6_COLCHETE_REGEX,
+    validar: (grupos) => grupos[1].toLowerCase() !== '::1',
+    montar: ipv6ColcheteMontar,
+  },
+  {
+    tipo: 'ip',
+    expressao: IPV6_CORINGA_REGEX,
+    montar: ipv6CoringaMontar,
+  },
+  {
+    tipo: 'ip',
+    expressao: IPV6_REGEX,
+    validar: (grupos) => !ipv6Preservado(grupos),
+  },
+  {
+    tipo: 'ip',
+    expressao: IPV4_REGEX,
+    validar: (grupos) => !ipv4Preservado(grupos),
+    montar: preservarPortaOuVazio,
+  },
+  {
+    tipo: 'host',
+    expressao: HOME_ALHEIO_REGEX,
+    montar: (grupos, mascara) => `${grupos[1]}${mascara}`,
+  },
+  {
+    tipo: 'host',
+    expressao: FQDN_CONTEXTO_REGEX,
+    montar: preservarPortaOuVazio,
+  },
+  {
+    tipo: 'host',
+    expressao: FQDN_ESTRUTURA_REGEX,
+    montar: preservarPortaOuVazio,
+  },
+];
+
 @Injectable()
 export class RedactionService {
   redigir(texto: string): ResultadoRedacao {
+    return this.aplicar(texto, PADROES);
+  }
+
+  redigirDiagnostico(texto: string): ResultadoRedacao {
+    return this.aplicar(texto, [...PADROES, ...PADROES_DIAGNOSTICO]);
+  }
+
+  private aplicar(texto: string, padroes: Padrao[]): ResultadoRedacao {
     if (!texto) {
       return { texto: texto ?? '', total: 0, ocorrencias: [] };
     }
@@ -220,7 +350,7 @@ export class RedactionService {
     const guardadas: TipoSegredo[] = [];
     let trabalho = texto;
 
-    for (const padrao of PADROES) {
+    for (const padrao of padroes) {
       trabalho = trabalho.replace(padrao.expressao, (...argumentos) => {
         const grupos = argumentos
           .slice(0, -2)

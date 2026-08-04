@@ -6,6 +6,7 @@ import { AuditoriaRegistroService } from './auditoria-registro.service';
 import { EnvelopeService } from './envelope.service';
 import { PoliticaService } from './politica.service';
 import { RedactionService } from './redaction.service';
+import { SanitizadorDiagnostico } from './sanitizador-diagnostico';
 import { SecurityService } from './security.service';
 
 @Module({
@@ -19,6 +20,7 @@ import { SecurityService } from './security.service';
     PoliticaService,
     AuditoriaRegistroService,
     SecurityService,
+    SanitizadorDiagnostico,
   ],
   exports: [
     SecurityService,
@@ -26,6 +28,7 @@ import { SecurityService } from './security.service';
     RedactionService,
     PoliticaService,
     AuditoriaRegistroService,
+    SanitizadorDiagnostico,
   ],
 })
 export class SecurityModule {}

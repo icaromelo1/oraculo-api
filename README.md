@@ -19,6 +19,8 @@ camadas de segurança e conversa com o modelo através de um adaptador plugável
 - **Capacidade é módulo.** Conhecimento, código, banco e shell são módulos auto-contidos,
   ligados por ENV e recortados por perfil de usuário. O que o perfil não alcança nunca é
   sequer apresentado ao modelo.
+- **ENV é o teto, banco é o recorte.** O `.env` diz o que a instalação *pode* ter; a configuração
+  gravada no banco só escolhe dentro disso, nunca amplia.
 - **Segurança fica no caminho, não ao lado.** Todo retorno de ferramenta passa pelo módulo
   de segurança: envelopado como dado inerte (nunca instrução), redigido de dado sensível e
   registrado na auditoria.
@@ -79,6 +81,81 @@ O índice correto é criado uma única vez na `InicialSchema`:
 CREATE INDEX "idx_trecho_embedding" ON "trecho"
   USING ivfflat ("embedding" vector_cosine_ops) WITH (lists = 100)
 ```
+
+## Configuração dinâmica (`src/config/`, `src/ambiente/`)
+
+O `.env` continua sendo lido no boot por `OraculoConfig`, mas parte da configuração passou a ser
+editável em tempo de execução (é o que a tela de configuração vai consumir). A regra que rege isso é
+uma só:
+
+> **O ENV é o teto, o banco é o recorte.** O `.env` define o que esta instalação **pode** ter; o
+> banco só escolhe **dentro** disso. Ligar no banco algo que o ENV proíbe é impossível, não
+> desencorajado.
+
+É a mesma postura de `PoliticaService`: o que não está explicitamente permitido é negado.
+
+### `ConfiguracaoService` é a fachada única
+
+Nenhum outro serviço lê `capacidade_instalacao`, `fonte_conhecimento`, `alvo_banco` ou
+`servico_observavel` direto — todos passam por `ConfiguracaoService`, que resolve `ENV ∩ banco` e
+mantém um instantâneo em memória, recarregado a cada escrita.
+
+| Método | O que devolve |
+|---|---|
+| `capacidadesEfetivas()` | por capacidade: `{ ligada, tetoDoEnv, motivoIndisponivel? }` |
+| `capacidadeLigada(nome)` | leitura **síncrona** do instantâneo (o motor precisa disso) |
+| `fontesEfetivas()` | as de `CORPUS_FONTES` (marcadas `origem: 'env'`, `removivel: false`) + as ativas de `fonte_conhecimento` |
+| `alvosBanco()` / `servicosObservaveis()` | só os ativos, e só se a capacidade correspondente estiver **efetivamente** ligada |
+| `definirCapacidade(nome, ligada, usuarioId)` | recusa com `403` se o ENV não permite |
+| `criarAlvoBanco` / `criarServico` / `remover*` | escrita, sempre auditada |
+
+Onde o teto é aplicado, para que não dependa de um único ponto:
+
+1. `definirCapacidade(x, true)` com `CAP_X=off` **lança** — o registro nunca chega ao banco;
+2. `capacidadesEfetivas()` ignora a linha do banco quando o teto é `off` — uma linha `ligada = true`
+   gravada por fora (SQL na mão, restore de dump) continua reportando `ligada: false` com motivo;
+3. `RegistryCapacidades.ligadaNaInstalacao` só consulta o `ConfiguracaoService` **depois** de o ENV
+   ter passado — se o teto é `off`, o recorte nem é perguntado;
+4. `PoliticaService.avaliar` segue conferindo o ENV por conta própria, como sempre fez;
+5. `criarAlvoBanco` exige que o `nome` esteja em `BANCO_ALVOS` — não adianta cadastrar um alvo que a
+   política bloquearia depois, então ele é recusado na entrada.
+
+Capacidade sem linha em `capacidade_instalacao` **espelha o ENV**. Uma instalação que nunca abriu a
+tela de configuração se comporta exatamente como antes.
+
+O cache é um instantâneo trocado atomicamente, nunca zerado: `capacidadeLigada` é síncrona (o motor
+chama `registry.descreverPara` dentro do laço) e não pode devolver "não sei" enquanto uma recarga
+acontece. Toda escrita invalida e **recarrega antes de responder**.
+
+### A URL do alvo de banco é credencial
+
+`alvo_banco.url` guarda usuário e senha, então não é gravada em claro nem devolvida pela API:
+
+- **cifrada** com AES-256-GCM, chave derivada por `scrypt` de `CONFIG_SECRET` (ou de `JWT_SECRET`,
+  se `CONFIG_SECRET` não existir) com sal fixo. O formato guardado é `v1:<iv>:<tag>:<corpo>` — IV
+  sorteado por gravação (dois alvos com a mesma URL não têm o mesmo texto cifrado) e a tag do GCM
+  faz adulteração falhar em vez de decifrar lixo;
+- **nunca sai na resposta.** A API devolve só `conexao: { host, porta, base, usuario }`, com o host
+  mascarado (`10.0.•.•`, `ba••••••••.interno.br`). Quem precisa da URL de verdade é o próprio
+  Oráculo, por `ConfiguracaoService.urlDoAlvo(nome)`, que só responde se a capacidade `banco`
+  estiver efetivamente ligada.
+
+Trocar `CONFIG_SECRET`/`JWT_SECRET` **invalida os alvos já gravados** — eles precisam ser
+recadastrados.
+
+### Endpoints (`/ambiente`)
+
+| Rota | O que faz |
+|---|---|
+| `GET /ambiente` | estado consolidado: capacidades com teto e motivo, fontes (marcando as do ENV), alvos de banco resumidos, serviços observáveis, contagem do corpus por fonte/autoridade, provedor e modelo atuais, data da última indexação |
+| `PATCH /ambiente/capacidades` | `{ capacidade, ligada }` |
+| `POST /ambiente/servicos` · `DELETE /ambiente/servicos/:id` | serviço observável |
+| `POST /ambiente/alvos-banco` · `DELETE /ambiente/alvos-banco/:id` | alvo de banco |
+
+**Toda escrita de configuração vira registro** via `SecurityService.registrar`, com `tom =
+configuracao`, quem mudou (`usuarioId`), o que mudou (`ferramentas[0].argumento`) e o valor
+anterior em texto (`capacidade "codigo" passou de ligada para desligada`). Mudança de configuração
+sem rastro é exatamente o que não pode acontecer — e o registro nunca carrega a URL do alvo.
 
 ## Camada de segurança (`src/security/`)
 
@@ -150,6 +227,61 @@ todo padrão puramente numérico é validado, não só reconhecido.
 Internamente cada valor detectado é substituído por um marcador de controle e só no fim vira
 `[oculto:<tipo>]` — assim um padrão não remascara a máscara de outro, e a contagem por tipo não
 infla. Redigir duas vezes o mesmo texto é idempotente.
+
+### Sanitização de diagnóstico (`SanitizadorDiagnostico`)
+
+O Oráculo vai ganhar comandos de leitura no servidor (containers de pé, portas escutando, logs de
+serviço, recursos da máquina) para o dono depurar pelo chat. Essa saída passa por um sanitizador à
+parte — `SanitizadorDiagnostico.sanitizar(bruto)` — que roda a redaction geral (token, senha, chave
+privada, …) **mais** dois tipos novos, `ip` e `host`, que só existem nesse caminho:
+
+| Tipo | Detecta |
+|---|---|
+| `ip` | IPv4 (qualquer posição, inclusive `host:porta`), IPv6 completo e abreviado (`::`), MAC address, e os idiomas de bind coringa do `docker ps`/`ss` (`0.0.0.0:porta`, `:::porta`, `[::]:porta`) |
+| `host` | hostname externo com TLD (FQDN, ex. `srv-01.interno.example.com`) e caminho de home de outro usuário (`/home/outro/...`) |
+
+**Por que um método à parte (`redigirDiagnostico`) e não os mesmos padrões de `redigir()`:**
+mascarar qualquer FQDN faria `redigir()` destruir URLs legítimas que já aparecem em respostas de
+chat normais (ex. `https://api.traceai.com.br/...`, testado e preservado em
+`redaction.service.spec.ts`). Diagnóstico de servidor é sobre *a própria máquina* — todo hostname
+ali é potencialmente topologia interna; texto de chat comum cita serviços de terceiros o tempo
+todo. Os dois contextos têm limiares de sensibilidade diferentes, então viraram dois conjuntos de
+padrão sobre a mesma engine (`redigir` usa só `PADROES`; `redigirDiagnostico` usa
+`PADROES + PADROES_DIAGNOSTICO`).
+
+O que é **preservado de propósito**, e por quê:
+
+- **Porta.** IP/host mascarados sempre mantêm o `:porta` fora da máscara —
+  `0.0.0.0:8080` → `[oculto:ip]:8080`. Quem depura precisa saber o que está escutando onde; o
+  endereço é o dado sensível, não o número.
+- **`127.0.0.1`, `::1` e `localhost`.** Não são segredo: são o próprio host, não revelam nada sobre
+  a topologia da rede (não existe "outro lugar" que esse endereço aponte).
+- **CIDR** (`172.18.0.0/16`, `2001:db8::/32`). Descreve uma faixa/política de rede, não um endereço
+  específico de máquina — a mesma escolha já feita em `redigir()` para `10.0.0.0/8`.
+- **`0.0.0.0` e `:::porta`/`[::]:porta` (bind coringa) SÃO mascarados**, ao contrário do loopback:
+  "escuta em todas as interfaces" ainda é informação sobre como o serviço está exposto, então segue
+  a regra geral em vez de ganhar uma exceção como o loopback.
+- **`/home/<dono>/...` permanece; `/home/<outro>/...` vira `[oculto:host]`.** Só o nome de usuário é
+  mascarado — o resto do caminho continua legível (`/home/[oculto:host]/scripts`). O "dono" é
+  resolvido em runtime via `os.userInfo().username` (o usuário do processo Node), não hardcoded —
+  então o comportamento segue a máquina onde o Oráculo roda de fato.
+- **Nome de container, imagem com tag (`postgres:17-alpine`, `node:24-slim`), uso de memória
+  (`free -m`) e de disco (`df -h`)** não batem em nenhum padrão de `ip`/`host`: imagem com tag não
+  tem ponto antes do `:` (não parece host:porta), e `free`/`df` são só números e caminhos de
+  filesystem, sem endereço nenhum.
+- **Hostname "solto" de 1 rótulo (`db.interno`, sem `://` nem `@` na frente) não é mascarado.**
+  `host` exige TLD com pelo menos 2 pontos (3 rótulos, como `srv-01.interno.example.com`) fora de
+  contexto de URL/e-mail — decisão deliberada: qualquer padrão de "uma palavra.uma palavra" também
+  casa com nome de arquivo (`config.yml`, `.env`, `report.json`), e um sanitizador de diagnóstico
+  que apaga nome de arquivo do próprio `docker logs` é pior que um que deixa passar um hostname
+  interno curto e sem contexto. Dentro de URL (`https://`) ou depois de `@` o limiar cai para 1
+  ponto, porque aí o contexto já prova que é host.
+
+**O que ainda não está coberto** (falso negativo conhecido, documentado em vez de escondido):
+endereço IPv4 mapeado em IPv6 (`::ffff:192.168.1.1`) não casa com o padrão de IPv6 nem com o de
+IPv4; nome de arquivo com dois pontos ou mais (`app.config.json`) pode ser mascarado por engano
+como `host` (falso positivo, não vazamento); hostname de 1 rótulo fora de contexto de URL/e-mail
+(item acima) não é mascarado.
 
 ### Política de sensibilidade
 

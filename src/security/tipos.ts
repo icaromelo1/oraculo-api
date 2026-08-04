@@ -8,7 +8,9 @@ export type TipoSegredo =
   | 'cartao'
   | 'chave_privada'
   | 'token'
-  | 'senha';
+  | 'senha'
+  | 'ip'
+  | 'host';
 
 export interface OcorrenciaRedacao {
   tipo: TipoSegredo;

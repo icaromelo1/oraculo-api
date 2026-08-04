@@ -4,6 +4,8 @@ export { EnvelopeService } from './envelope.service';
 export { RedactionService } from './redaction.service';
 export { PoliticaService } from './politica.service';
 export { AuditoriaRegistroService } from './auditoria-registro.service';
+export { SanitizadorDiagnostico } from './sanitizador-diagnostico';
+export type { ResultadoSanitizacao } from './sanitizador-diagnostico';
 export type {
   AlcancePerfil,
   BloqueioAuditado,
