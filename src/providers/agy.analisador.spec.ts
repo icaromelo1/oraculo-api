@@ -168,7 +168,8 @@ describe('erro do agy com detalhe', () => {
     expect(eventos[0]).toEqual({
       tipo: 'erro',
       codigo: 'agy_status_nao_sucesso',
-      mensagem: 'agy indisponível: Eligibility check failed: UNAVAILABLE (code 503)',
+      mensagem:
+        'agy indisponível: Eligibility check failed: UNAVAILABLE (code 503)',
       retomavel: true,
     });
   });
