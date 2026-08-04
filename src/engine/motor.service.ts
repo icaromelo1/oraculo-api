@@ -374,7 +374,7 @@ export class MotorOraculo {
           ambiente.estado.fontes.set(fonte.id, fonte);
           ambiente.estado.idsValidos.add(fonte.id);
 
-          yield { tipo: 'citacao', fonte };
+          yield { tipo: 'citacao', fonte, ferramentaId: id };
         }
 
         partes.push(
