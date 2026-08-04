@@ -214,7 +214,8 @@ function construirArgv(pedido: PedidoGeracao, modelo: string): string[] {
     modelo,
     '--allowedTools',
     'FerramentaInexistente',
-    '--append-system-prompt',
+    '--exclude-dynamic-system-prompt-sections',
+    '--system-prompt',
     pedido.sistema,
   ];
 }
