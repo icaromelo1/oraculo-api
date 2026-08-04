@@ -212,6 +212,8 @@ function construirArgv(pedido: PedidoGeracao, modelo: string): string[] {
     JSON.stringify({ mcpServers: {} }),
     '--model',
     modelo,
+    '--tools',
+    'NenhumaFerramentaNativa',
     '--allowedTools',
     'FerramentaInexistente',
     '--exclude-dynamic-system-prompt-sections',

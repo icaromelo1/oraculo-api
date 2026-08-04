@@ -38,7 +38,7 @@ saída não têm nada em comum:
 | Texto | `delta.text_delta` do bloco `text` | `step_update.text_delta` de `agent_response` |
 | Fim | `type:"result"` com `total_cost_usd` | `event:"result"` com `status` e `duration_seconds` |
 | System prompt | `--append-system-prompt` | **não existe** — vai dentro do próprio prompt |
-| Desligar ferramentas | `--allowedTools "FerramentaInexistente"` (allowlist vazia) | **não existe** |
+| Desligar ferramentas | `--tools` esvazia a lista + allowlist vazia | **não existe** |
 | Streaming | token a token (`--include-partial-messages`) | **um bloco só** por resposta |
 
 Três consequências medidas, que valem saber antes de trocar de dialeto:
