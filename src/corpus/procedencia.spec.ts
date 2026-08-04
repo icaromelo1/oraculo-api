@@ -82,3 +82,23 @@ describe('construirProcedencia', () => {
     });
   });
 });
+
+describe('procedência com caminhos do container', () => {
+  it('reconhece agentes montados como claude-workspace-config', () => {
+    expect(
+      inferirFonte('/corpus/claude-workspace-config/workspace-agents/x.md'),
+    ).toEqual({ fonte: 'agente', autoridade: 1 });
+  });
+
+  it('reconhece a memória sincronizada em oraculo-workspace/memoria', () => {
+    expect(
+      inferirFonte('/corpus/oraculo-workspace/memoria/feedback_x.md'),
+    ).toEqual({ fonte: 'memoria', autoridade: 1 });
+  });
+
+  it('continua reconhecendo a memória no caminho original do Claude', () => {
+    expect(
+      inferirFonte('/corpus/.claude/projects/-home-ubuntu/memory/y.md'),
+    ).toEqual({ fonte: 'memoria', autoridade: 1 });
+  });
+});

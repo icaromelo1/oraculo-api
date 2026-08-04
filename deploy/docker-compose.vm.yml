@@ -25,8 +25,8 @@ services:
     volumes:
       - ${HOME}/.local/bin/agy:/usr/local/bin/agy:ro
       - ${HOME}/.gemini:/root/.gemini
-      - ${HOME}/.claude/projects:/corpus/claude-projects:ro
-      - ${HOME}/claude-workspace-config:/corpus/workspace-config:ro
+      - ${HOME}/.claude/projects:/corpus/.claude/projects:ro
+      - ${HOME}/claude-workspace-config:/corpus/claude-workspace-config:ro
       - ${HOME}/infra:/corpus/infra:ro
       - ${HOME}/projects:/corpus/projects:ro
       - ${HOME}/oraculo-workspace:/corpus/oraculo-workspace:ro

@@ -10,7 +10,8 @@ export interface Procedencia {
   hash: string;
 }
 
-const PADRAO_MEMORIA = /\.claude\/projects\/[^/]+\/memory\/[^/]+\.md$/i;
+const PADRAO_MEMORIA =
+  /(\.claude\/projects\/[^/]+\/memory\/[^/]+\.md$)|(\/memoria\/[^/]+\.md$)/i;
 const PADRAO_AGENTE =
   /claude-workspace-config\/(agents|skills|claudicaro|workspace-agents)(\/|$)/i;
 const PADRAO_CONFIG_VIVA =
