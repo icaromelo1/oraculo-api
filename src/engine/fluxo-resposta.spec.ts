@@ -162,3 +162,31 @@ describe('FluxoResposta', () => {
     expect(fluxo.texto).toBe('antes  depois');
   });
 });
+
+describe('formato nativo de chamada de ferramenta', () => {
+  it('captura o pedido e não deixa o xml vazar no texto visível', () => {
+    const fluxo = new FluxoResposta(redigir, new Set<string>());
+
+    let visivel = fluxo.empurrar(
+      'Vou procurar. <function_calls>\n[{"type":"function","function":{"name":"buscar_conhecimento","arguments":{"consulta":"branch"}}}]\n</function_calls> pronto.',
+    );
+    visivel += fluxo.encerrar();
+
+    expect(visivel).not.toContain('function_calls');
+    expect(visivel).not.toContain('buscar_conhecimento');
+    expect(fluxo.blocos).toEqual([
+      '{"ferramenta":"buscar_conhecimento","argumentos":{"consulta":"branch"}}',
+    ]);
+  });
+
+  it('continua entendendo o bloco cercado do nosso protocolo', () => {
+    const fluxo = new FluxoResposta(redigir, new Set<string>());
+
+    fluxo.empurrar(
+      'ok ```oraculo-tool\n{"ferramenta":"ler_documento","argumentos":{}}\n``` fim',
+    );
+    fluxo.encerrar();
+
+    expect(fluxo.blocos[0]).toContain('ler_documento');
+  });
+});

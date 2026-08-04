@@ -1,6 +1,35 @@
 export const CERCA_ABRE = '```oraculo-tool';
 export const CERCA_FECHA = '```';
 
+export const NATIVO_ABRE = '<function_calls>';
+export const NATIVO_FECHA = '</function_calls>';
+
+export function normalizarPedidoNativo(bruto: string): string {
+  const abre = bruto.indexOf('[');
+  const fecha = bruto.lastIndexOf(']');
+  const trecho =
+    abre >= 0 && fecha > abre ? bruto.slice(abre, fecha + 1) : bruto;
+
+  try {
+    const lido: unknown = JSON.parse(trecho);
+    const lista = Array.isArray(lido) ? lido : [lido];
+    const primeiro = lista[0] as Record<string, unknown> | undefined;
+    const funcao = (primeiro?.function ?? primeiro) as
+      Record<string, unknown> | undefined;
+
+    if (!funcao || typeof funcao.name !== 'string') {
+      return bruto;
+    }
+
+    return JSON.stringify({
+      ferramenta: funcao.name,
+      argumentos: funcao.arguments ?? funcao.input ?? {},
+    });
+  } catch {
+    return bruto;
+  }
+}
+
 export interface PedidoModelo {
   ferramenta: string;
   argumentos: Record<string, unknown>;

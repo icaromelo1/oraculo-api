@@ -1,6 +1,12 @@
 import type { ResultadoRedacao } from '../security/tipos';
 import { limparMarcadores, marcadorParcial } from './cobertura';
-import { CERCA_ABRE, CERCA_FECHA } from './protocolo';
+import {
+  CERCA_ABRE,
+  CERCA_FECHA,
+  NATIVO_ABRE,
+  NATIVO_FECHA,
+  normalizarPedidoNativo,
+} from './protocolo';
 
 export const JANELA = 256;
 
@@ -38,6 +44,8 @@ export class FluxoResposta {
   private visivel = '';
   private blocoAberto = '';
   private dentroDoBloco = false;
+  private fechaAtual = CERCA_FECHA;
+  private nativoAtual = false;
   private emitido = '';
   private redigidos = 0;
   private readonly pedidos: string[] = [];
@@ -92,29 +100,38 @@ export class FluxoResposta {
     }
   }
 
+  private guardarPedido(): void {
+    this.pedidos.push(
+      this.nativoAtual
+        ? normalizarPedidoNativo(this.blocoAberto)
+        : this.blocoAberto,
+    );
+    this.blocoAberto = '';
+  }
+
   private separarDentro(final: boolean): boolean {
-    const fim = this.naoClassificado.indexOf(CERCA_FECHA);
+    const fim = this.naoClassificado.indexOf(this.fechaAtual);
 
     if (fim >= 0) {
       this.blocoAberto += this.naoClassificado.slice(0, fim);
-      this.pedidos.push(this.blocoAberto);
-      this.blocoAberto = '';
+      this.guardarPedido();
       this.naoClassificado = this.naoClassificado.slice(
-        fim + CERCA_FECHA.length,
+        fim + this.fechaAtual.length,
       );
       this.dentroDoBloco = false;
 
       return true;
     }
 
-    const reter = final ? 0 : sufixoParcial(this.naoClassificado, CERCA_FECHA);
+    const reter = final
+      ? 0
+      : sufixoParcial(this.naoClassificado, this.fechaAtual);
     const corte = this.naoClassificado.length - reter;
     this.blocoAberto += this.naoClassificado.slice(0, corte);
     this.naoClassificado = this.naoClassificado.slice(corte);
 
     if (final) {
-      this.pedidos.push(this.blocoAberto);
-      this.blocoAberto = '';
+      this.guardarPedido();
       this.dentroDoBloco = false;
     }
 
@@ -122,19 +139,28 @@ export class FluxoResposta {
   }
 
   private separarFora(final: boolean): boolean {
-    const inicio = this.naoClassificado.indexOf(CERCA_ABRE);
+    const naCerca = this.naoClassificado.indexOf(CERCA_ABRE);
+    const naNativa = this.naoClassificado.indexOf(NATIVO_ABRE);
+    const usaNativa = naNativa >= 0 && (naCerca < 0 || naNativa < naCerca);
+    const abre = usaNativa ? NATIVO_ABRE : CERCA_ABRE;
+    const inicio = usaNativa ? naNativa : naCerca;
 
     if (inicio >= 0) {
       this.visivel += this.naoClassificado.slice(0, inicio);
-      this.naoClassificado = this.naoClassificado.slice(
-        inicio + CERCA_ABRE.length,
-      );
+      this.naoClassificado = this.naoClassificado.slice(inicio + abre.length);
       this.dentroDoBloco = true;
+      this.nativoAtual = usaNativa;
+      this.fechaAtual = usaNativa ? NATIVO_FECHA : CERCA_FECHA;
 
       return true;
     }
 
-    const reter = final ? 0 : sufixoParcial(this.naoClassificado, CERCA_ABRE);
+    const reter = final
+      ? 0
+      : Math.max(
+          sufixoParcial(this.naoClassificado, CERCA_ABRE),
+          sufixoParcial(this.naoClassificado, NATIVO_ABRE),
+        );
     const corte = this.naoClassificado.length - reter;
     this.visivel += this.naoClassificado.slice(0, corte);
     this.naoClassificado = this.naoClassificado.slice(corte);
