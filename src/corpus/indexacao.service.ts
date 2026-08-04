@@ -9,6 +9,8 @@ import { construirProcedencia } from './procedencia';
 import { VarreduraService } from './varredura.service';
 import { EmbeddingService } from './embedding.service';
 
+const BYTE_NULO = String.fromCharCode(0);
+
 export interface ResumoIndexacao {
   documentosNovos: number;
   documentosAtualizados: number;
@@ -50,7 +52,7 @@ export class IndexacaoService {
         continue;
       }
 
-      const conteudo = bruto.toString('utf-8').replace(/\u0000/g, '');
+      const conteudo = bruto.toString('utf-8').split(BYTE_NULO).join('');
       const procedencia = construirProcedencia(
         arquivo.caminhoAbsoluto,
         conteudo,
