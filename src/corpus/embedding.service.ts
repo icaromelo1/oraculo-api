@@ -9,6 +9,8 @@ export interface OpcoesEmbutir {
   prefixo?: PrefixoEmbedding;
 }
 
+const TETO_CARACTERES = 2000;
+
 @Injectable()
 export class EmbeddingService {
   private extratorPromise: Promise<FeatureExtractionPipeline> | null = null;
@@ -28,7 +30,7 @@ export class EmbeddingService {
     for (let inicio = 0; inicio < textos.length; inicio += tamanhoLote) {
       const lote = textos
         .slice(inicio, inicio + tamanhoLote)
-        .map((texto) => `${prefixo}: ${texto}`);
+        .map((texto) => `${prefixo}: ${texto.slice(0, TETO_CARACTERES)}`);
 
       const saida = await extrator(lote, { pooling: 'mean', normalize: true });
       resultado.push(...(saida.tolist() as number[][]));

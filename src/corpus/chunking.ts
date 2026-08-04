@@ -45,12 +45,33 @@ function dividirEmSecoes(linhas: string[]): Secao[] {
   return secoes;
 }
 
-function fatiarPorTeto(
+export function quebrarLinhasLongas(
   linhas: string[],
+  tetoCaracteres: number,
+): string[] {
+  const saida: string[] = [];
+
+  for (const linha of linhas) {
+    if (linha.length <= tetoCaracteres) {
+      saida.push(linha);
+      continue;
+    }
+
+    for (let corte = 0; corte < linha.length; corte += tetoCaracteres) {
+      saida.push(linha.slice(corte, corte + tetoCaracteres));
+    }
+  }
+
+  return saida;
+}
+
+function fatiarPorTeto(
+  linhasBrutas: string[],
   linhaInicioBase: number,
   tetoCaracteres: number,
   sobreposicaoCaracteres: number,
 ): BlocoFatiado[] {
+  const linhas = quebrarLinhasLongas(linhasBrutas, tetoCaracteres);
   if (linhas.length === 0) return [];
 
   const blocos: BlocoFatiado[] = [];

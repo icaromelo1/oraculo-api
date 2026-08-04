@@ -1,4 +1,9 @@
-import { quebrarCodigo, quebrarDocumento, quebrarMarkdown } from './chunking';
+import {
+  quebrarCodigo,
+  quebrarDocumento,
+  quebrarLinhasLongas,
+  quebrarMarkdown,
+} from './chunking';
 
 describe('quebrarMarkdown', () => {
   it('quebra por seção (heading) e preserva a ordem', () => {
@@ -107,5 +112,22 @@ describe('quebrarDocumento', () => {
 
   it('devolve vazio para conteúdo vazio', () => {
     expect(quebrarDocumento('/x/doc.md', '')).toEqual([]);
+  });
+});
+
+describe('quebrarLinhasLongas', () => {
+  it('fatia uma linha maior que o teto', () => {
+    const resultado = quebrarLinhasLongas(['x'.repeat(2500)], 1000);
+
+    expect(resultado).toHaveLength(3);
+    expect(resultado[0]).toHaveLength(1000);
+    expect(resultado[2]).toHaveLength(500);
+  });
+
+  it('não toca em linhas dentro do teto', () => {
+    expect(quebrarLinhasLongas(['curta', 'outra'], 1000)).toEqual([
+      'curta',
+      'outra',
+    ]);
   });
 });
