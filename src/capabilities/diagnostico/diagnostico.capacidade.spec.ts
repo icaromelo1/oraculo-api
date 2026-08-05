@@ -359,7 +359,7 @@ describe('DiagnosticoCapacidade', () => {
         ].join('\n'),
       );
 
-      const capacidade = montar();
+      const capacidade = montar({ servicos: ['oraculo-db', 'oraculo-api'] });
       const resultado = await capacidade.executar({
         comando: 'servicos_ativos',
       });
@@ -388,7 +388,10 @@ describe('DiagnosticoCapacidade', () => {
         ].join('\n'),
       );
 
-      const capacidade = montar({ binario: '/usr/sbin/ss' });
+      const capacidade = montar({
+        binario: '/usr/sbin/ss',
+        servicos: ['docker-proxy', 'postgres', 'nginx'],
+      });
       const resultado = await capacidade.executar({
         comando: 'portas_escutando',
       });

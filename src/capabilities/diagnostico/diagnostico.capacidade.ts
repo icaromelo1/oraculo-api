@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { OraculoConfig } from '../../config/config.service';
 import { ConfiguracaoService } from '../../config/configuracao.service';
 import { SanitizadorDiagnostico } from '../../security/sanitizador-diagnostico';
+import { recortaInventario, recortarInventario } from './recorte-inventario';
 import type { RetornoFerramenta } from '../../security/tipos';
 import type {
   Capacidade,
@@ -237,6 +238,12 @@ export class DiagnosticoCapacidade implements Capacidade {
     const retornos: RetornoFerramenta[] = [];
     let concluidos = 0;
 
+    const cadastrados = recortaInventario(entrada.id)
+      ? (await this.configuracao.servicosObservaveis()).map(
+          (servico) => servico.nome,
+        )
+      : [];
+
     for (const passo of entrada.passos) {
       const argumentos = montarArgumentos(passo, valores);
 
@@ -262,7 +269,8 @@ export class DiagnosticoCapacidade implements Capacidade {
       }
 
       const bruto = resultado.ok
-        ? resultado.saida.trim() || '(sem saída)'
+        ? recortarInventario(entrada.id, resultado.saida.trim(), cadastrados) ||
+          '(sem saída)'
         : (resultado.erro ?? 'falha desconhecida ao executar o diagnóstico');
 
       retornos.push(
