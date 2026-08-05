@@ -275,7 +275,10 @@ describe('ambiente do processo filho', () => {
     processo.emit('close', 0);
     await promessa;
 
-    const env = spawnFalso.mock.calls[0][2].env as Record<string, string>;
+    const opcoes = spawnFalso.mock.calls[0][2] as {
+      env: Record<string, string>;
+    };
+    const env = opcoes.env;
 
     expect(env.DOCKER_HOST).toBe('tcp://oraculo-docker:2375');
     expect(Object.keys(env).sort()).toEqual([
@@ -295,7 +298,10 @@ describe('ambiente do processo filho', () => {
     processo.emit('close', 0);
     await promessa;
 
-    const env = spawnFalso.mock.calls[0][2].env as Record<string, string>;
+    const opcoes = spawnFalso.mock.calls[0][2] as {
+      env: Record<string, string>;
+    };
+    const env = opcoes.env;
 
     expect(env.DOCKER_HOST).toBeUndefined();
   });
@@ -310,7 +316,10 @@ describe('ambiente do processo filho', () => {
     processo.emit('close', 0);
     await promessa;
 
-    const env = spawnFalso.mock.calls[0][2].env as Record<string, string>;
+    const opcoes = spawnFalso.mock.calls[0][2] as {
+      env: Record<string, string>;
+    };
+    const env = opcoes.env;
 
     expect(JSON.stringify(env)).not.toContain('nao-pode-vazar');
     delete process.env.SEGREDO_DO_ORACULO;
