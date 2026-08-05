@@ -21,6 +21,7 @@ export class ListarDocumentosDto {
   fonte?: Fonte;
   autoridade?: number;
   pasta?: string;
+  recursivo: boolean = true;
   pagina: number = PAGINA_PADRAO;
   porPagina: number = POR_PAGINA_PADRAO;
 }
@@ -77,6 +78,14 @@ function lerPasta(valor: unknown): string | undefined {
   return texto;
 }
 
+function lerBooleano(valor: unknown, padrao: boolean): boolean {
+  if (valor === undefined || valor === null || valor === '') return padrao;
+  if (valor === true || valor === 'true') return true;
+  if (valor === false || valor === 'false') return false;
+
+  throw new BadRequestException('"recursivo" precisa ser true ou false');
+}
+
 export function validarListarDocumentosDto(
   query: unknown,
 ): ListarDocumentosDto {
@@ -85,6 +94,7 @@ export function validarListarDocumentosDto(
 
   dto.busca = lerTexto(corpo.busca);
   dto.pasta = lerPasta(corpo.pasta);
+  dto.recursivo = lerBooleano(corpo.recursivo, true);
 
   const fonte = lerTexto(corpo.fonte);
 

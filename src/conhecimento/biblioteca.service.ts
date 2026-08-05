@@ -98,9 +98,18 @@ export class BibliotecaService {
     const pastaReal = this.pastaParaFiltro(filtro.pasta);
 
     if (pastaReal) {
-      consulta.andWhere('documento.caminho LIKE :pasta', {
-        pasta: `${pastaReal.replace(/[\\%_]/g, '\\$&')}/%`,
-      });
+      const prefixo = pastaReal.replace(/[\\%_]/g, '\\$&');
+
+      if (filtro.recursivo) {
+        consulta.andWhere('documento.caminho LIKE :pasta', {
+          pasta: `${prefixo}/%`,
+        });
+      } else {
+        consulta.andWhere(
+          'documento.caminho LIKE :pasta AND documento.caminho NOT LIKE :fundo',
+          { pasta: `${prefixo}/%`, fundo: `${prefixo}/%/%` },
+        );
+      }
     }
 
     const [linhas, total] = await consulta

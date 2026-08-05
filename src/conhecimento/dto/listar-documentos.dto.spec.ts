@@ -97,3 +97,21 @@ describe('filtro por pasta', () => {
     expect(validarListarDocumentosDto({ pasta: '   ' }).pasta).toBeUndefined();
   });
 });
+
+describe('modo recursivo', () => {
+  it('é recursivo por padrão', () => {
+    expect(validarListarDocumentosDto({}).recursivo).toBe(true);
+  });
+
+  it('aceita false como texto vindo da query', () => {
+    expect(validarListarDocumentosDto({ recursivo: 'false' }).recursivo).toBe(
+      false,
+    );
+  });
+
+  it('recusa valor que não é booleano', () => {
+    expect(() => validarListarDocumentosDto({ recursivo: 'talvez' })).toThrow(
+      BadRequestException,
+    );
+  });
+});
