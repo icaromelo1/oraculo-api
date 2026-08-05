@@ -78,6 +78,17 @@ export class MotorOraculo {
     try {
       try {
         yield* this.executar(pergunta, contexto, estado);
+
+        if (!estado.resposta.trim()) {
+          estado.tom = 'erro';
+          yield {
+            tipo: 'erro',
+            codigo: 'resposta_vazia',
+            mensagem:
+              'o modelo não devolveu nada — provavelmente uma falha momentânea do provedor. Tente de novo; se repetir, confira o provedor configurado em Ambiente.',
+            retomavel: true,
+          };
+        }
       } catch (falha) {
         estado.tom = 'erro';
         yield {

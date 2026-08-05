@@ -532,3 +532,25 @@ describe('MotorOraculo', () => {
     expect(salvos).toHaveLength(1);
   });
 });
+
+describe('provedor que não devolve nada', () => {
+  it('emite erro em vez de terminar em silêncio', async () => {
+    const { motor } = montar([() => [fim()]]);
+
+    const eventos = await coletar(motor);
+    const erro = eventos.find((evento) => evento.tipo === 'erro');
+
+    expect(erro).toBeDefined();
+    expect(erro?.tipo === 'erro' && erro.codigo).toBe('resposta_vazia');
+    expect(tipos(eventos).at(-1)).toBe('mensagem.fim');
+  });
+
+  it('não reclama quando o modelo respondeu de verdade', async () => {
+    const { motor } = montar([() => [texto('o oraculo roda na VM.'), fim()]]);
+
+    const eventos = await coletar(motor);
+
+    expect(eventos.some((evento) => evento.tipo === 'erro')).toBe(false);
+    expect(textoDe(eventos)).toContain('roda na VM');
+  });
+});
