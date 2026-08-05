@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -11,6 +12,8 @@ import {
   Req,
 } from '@nestjs/common';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
+import { abrirSessaoPostgres } from '../capabilities/banco/conexao';
+import { verificarSomenteLeitura } from '../capabilities/banco/verificacao-alvo';
 import { ConfiguracaoService } from '../config/configuracao.service';
 import { AmbienteService } from './ambiente.service';
 import {
@@ -89,14 +92,23 @@ export class AmbienteController {
   }
 
   @Post('alvos-banco')
-  criarAlvoBanco(
+  async criarAlvoBanco(
     @Body() corpo: unknown,
     @Req() requisicao: RequisicaoAutenticada,
   ) {
-    return this.configuracao.criarAlvoBanco(
-      validarNovoAlvoBancoDto(corpo),
-      this.usuarioId(requisicao),
+    const alvo = validarNovoAlvoBancoDto(corpo);
+
+    const veredicto = await verificarSomenteLeitura(
+      alvo.url,
+      alvo.schemas ?? [],
+      abrirSessaoPostgres,
     );
+
+    if (!veredicto.somenteLeitura) {
+      throw new BadRequestException(veredicto.motivo);
+    }
+
+    return this.configuracao.criarAlvoBanco(alvo, this.usuarioId(requisicao));
   }
 
   @HttpCode(204)
