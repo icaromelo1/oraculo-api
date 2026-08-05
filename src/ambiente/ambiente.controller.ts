@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Delete,
   Get,
   HttpCode,
@@ -97,6 +98,16 @@ export class AmbienteController {
     @Req() requisicao: RequisicaoAutenticada,
   ) {
     const alvo = validarNovoAlvoBancoDto(corpo);
+
+    const banco = (await this.configuracao.capacidadesEfetivas()).find(
+      (item) => item.capacidade === 'banco',
+    );
+
+    if (!banco?.tetoDoEnv) {
+      throw new ForbiddenException(
+        'a capacidade "banco" está desligada por CAP_BANCO=off no .env desta instalação',
+      );
+    }
 
     const veredicto = await verificarSomenteLeitura(
       alvo.url,
