@@ -39,6 +39,11 @@ export class ConhecimentoController {
     private readonly biblioteca: BibliotecaService,
   ) {}
 
+  @Get('pastas')
+  pastas() {
+    return this.biblioteca.pastas();
+  }
+
   @Get('documentos')
   listarDocumentos(@Query() query: unknown): Promise<ListaDocumentos> {
     return this.biblioteca.listar(validarListarDocumentosDto(query));

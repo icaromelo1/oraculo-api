@@ -73,3 +73,27 @@ describe('validarListarDocumentosDto', () => {
     }
   });
 });
+
+describe('filtro por pasta', () => {
+  it('aceita caminho absoluto', () => {
+    const dto = validarListarDocumentosDto({ pasta: '/home/ubuntu/projects' });
+
+    expect(dto.pasta).toBe('/home/ubuntu/projects');
+  });
+
+  it('recusa caminho relativo', () => {
+    expect(() => validarListarDocumentosDto({ pasta: 'projects' })).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('recusa travessia de diretório', () => {
+    expect(() =>
+      validarListarDocumentosDto({ pasta: '/home/ubuntu/../../etc' }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('ignora pasta vazia', () => {
+    expect(validarListarDocumentosDto({ pasta: '   ' }).pasta).toBeUndefined();
+  });
+});

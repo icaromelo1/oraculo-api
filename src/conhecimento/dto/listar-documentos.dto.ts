@@ -20,6 +20,7 @@ export class ListarDocumentosDto {
   busca?: string;
   fonte?: Fonte;
   autoridade?: number;
+  pasta?: string;
   pagina: number = PAGINA_PADRAO;
   porPagina: number = POR_PAGINA_PADRAO;
 }
@@ -62,6 +63,20 @@ function lerAutoridade(valor: unknown): number | undefined {
   return numero;
 }
 
+function lerPasta(valor: unknown): string | undefined {
+  const texto = lerTexto(valor);
+
+  if (texto === undefined) return undefined;
+
+  if (!texto.startsWith('/') || texto.split('/').includes('..')) {
+    throw new BadRequestException(
+      '"pasta" precisa ser um caminho absoluto sem travessia de diretório',
+    );
+  }
+
+  return texto;
+}
+
 export function validarListarDocumentosDto(
   query: unknown,
 ): ListarDocumentosDto {
@@ -69,6 +84,7 @@ export function validarListarDocumentosDto(
   const dto = new ListarDocumentosDto();
 
   dto.busca = lerTexto(corpo.busca);
+  dto.pasta = lerPasta(corpo.pasta);
 
   const fonte = lerTexto(corpo.fonte);
 

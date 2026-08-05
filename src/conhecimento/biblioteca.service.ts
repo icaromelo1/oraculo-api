@@ -35,6 +35,12 @@ export interface DocumentoListado extends DocumentoResumido {
   bytes: number;
 }
 
+export interface PastaDaBiblioteca {
+  caminho: string;
+  caminhoReal: string;
+  documentos: number;
+}
+
 export interface ListaDocumentos {
   documentos: DocumentoListado[];
   total: number;
@@ -89,6 +95,14 @@ export class BibliotecaService {
       });
     }
 
+    const pastaReal = this.pastaParaFiltro(filtro.pasta);
+
+    if (pastaReal) {
+      consulta.andWhere('documento.caminho LIKE :pasta', {
+        pasta: `${pastaReal.replace(/[\\%_]/g, '\\$&')}/%`,
+      });
+    }
+
     const [linhas, total] = await consulta
       .skip((filtro.pagina - 1) * filtro.porPagina)
       .take(filtro.porPagina)
@@ -109,6 +123,47 @@ export class BibliotecaService {
       pagina: filtro.pagina,
       porPagina: filtro.porPagina,
     };
+  }
+
+  async pastas(): Promise<PastaDaBiblioteca[]> {
+    const linhas = await this.documentos
+      .createQueryBuilder('documento')
+      .select('documento.caminho', 'caminho')
+      .getRawMany<{ caminho: string }>();
+
+    const contagem = new Map<string, number>();
+
+    for (const linha of linhas) {
+      const pasta = linha.caminho.slice(0, linha.caminho.lastIndexOf('/'));
+
+      if (!pasta) continue;
+
+      contagem.set(pasta, (contagem.get(pasta) ?? 0) + 1);
+    }
+
+    return [...contagem.entries()]
+      .map(([caminho, documentos]) => ({
+        caminho: traduzirCaminho(caminho, this.mapaExibicao),
+        caminhoReal: caminho,
+        documentos,
+      }))
+      .sort((a, b) => a.caminho.localeCompare(b.caminho));
+  }
+
+  private pastaParaFiltro(pasta?: string): string | null {
+    const limpo = pasta?.trim().replace(/\/+$/, '');
+
+    if (!limpo) return null;
+
+    const mapa = this.mapaExibicao;
+
+    for (const { de, para } of mapa) {
+      if (limpo === para) return de;
+      if (limpo.startsWith(`${para}/`))
+        return `${de}${limpo.slice(para.length)}`;
+    }
+
+    return limpo;
   }
 
   async abrir(id: string): Promise<DocumentoAberto> {
