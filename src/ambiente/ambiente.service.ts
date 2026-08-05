@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { constants } from 'node:fs';
+import { access, stat } from 'node:fs/promises';
 import { Repository } from 'typeorm';
 import { OraculoConfig } from '../config/config.service';
 import {
@@ -9,12 +11,30 @@ import {
   FonteEfetiva,
   ServicoResumido,
 } from '../config/configuracao.service';
+import {
+  ItemDaAmostra,
+  OpcoesDePrevia,
+  preverFonte,
+} from '../corpus/varredura.service';
 import { Documento } from '../database/entities';
 
 export interface ContagemCorpus {
   fonte: string;
   autoridade: number;
   documentos: number;
+}
+
+export interface PreviaDeFonte {
+  caminho: string;
+  existe: boolean;
+  legivel: boolean;
+  arquivosElegiveis: number;
+  arquivosRecusados: number;
+  bytesTotais: number;
+  porExtensao: Record<string, number>;
+  amostra: ItemDaAmostra[];
+  motivosDeRecusa: Record<string, number>;
+  truncada: boolean;
 }
 
 export interface EstadoDoAmbiente {
@@ -64,6 +84,58 @@ export class AmbienteService {
       },
       provedor: this.provedor(),
       ultimaIndexacao: ultimo?.atualizadoEm ?? null,
+    };
+  }
+
+  async previaDeFonte(
+    caminho: string,
+    opcoes: OpcoesDePrevia = {},
+  ): Promise<PreviaDeFonte> {
+    const alvo = await this.configuracao.resolverCaminhoDeFonte(caminho);
+
+    if (!alvo.existe) {
+      return this.previaVazia(alvo.real, false, false);
+    }
+
+    if (!(await stat(alvo.real)).isDirectory()) {
+      throw new BadRequestException(
+        `"${alvo.informado}" não é uma pasta — uma fonte de conhecimento é sempre um diretório`,
+      );
+    }
+
+    const legivel = await access(alvo.real, constants.R_OK | constants.X_OK)
+      .then(() => true)
+      .catch(() => false);
+
+    if (!legivel) {
+      return this.previaVazia(alvo.real, true, false);
+    }
+
+    const previa = await preverFonte(
+      alvo.real,
+      this.config.corpus.negados,
+      opcoes,
+    );
+
+    return { caminho: alvo.real, existe: true, legivel: true, ...previa };
+  }
+
+  private previaVazia(
+    caminho: string,
+    existe: boolean,
+    legivel: boolean,
+  ): PreviaDeFonte {
+    return {
+      caminho,
+      existe,
+      legivel,
+      arquivosElegiveis: 0,
+      arquivosRecusados: 0,
+      bytesTotais: 0,
+      porExtensao: {},
+      amostra: [],
+      motivosDeRecusa: {},
+      truncada: false,
     };
   }
 

@@ -6,14 +6,20 @@ function padraoParaRegex(padrao: string): RegExp {
   return new RegExp(`^${escapado}$`, 'i');
 }
 
+export function casaAlgumPadrao(
+  segmento: string,
+  padroes: readonly string[],
+): boolean {
+  return padroes.some((padrao) => padraoParaRegex(padrao).test(segmento));
+}
+
 export function caminhoNegado(
   caminhoRelativo: string,
   padroesNegados: readonly string[],
 ): boolean {
   const segmentos = caminhoRelativo.split(/[\\/]+/).filter(Boolean);
-  const regexes = padroesNegados.map(padraoParaRegex);
 
   return segmentos.some((segmento) =>
-    regexes.some((regex) => regex.test(segmento)),
+    casaAlgumPadrao(segmento, padroesNegados),
   );
 }
