@@ -15,7 +15,7 @@ FROM node:24-slim AS runtime
 ARG DOCKER_CLI_VERSAO=27.5.1
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git ca-certificates curl \
+  && apt-get install -y --no-install-recommends git ca-certificates curl procps iproute2 \
   && arquitetura="$(dpkg --print-architecture)" \
   && case "$arquitetura" in \
        arm64) alvo=aarch64 ;; \

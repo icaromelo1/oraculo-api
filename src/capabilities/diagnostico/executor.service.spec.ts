@@ -253,3 +253,66 @@ describe('ExecutorDiagnostico', () => {
     expect(resultado.erro).toBe('argumento inválido montado para "docker"');
   });
 });
+
+describe('ambiente do processo filho', () => {
+  const original = process.env.DOCKER_HOST;
+
+  beforeEach(() => {
+    spawnFalso.mockReset();
+  });
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.DOCKER_HOST;
+    else process.env.DOCKER_HOST = original;
+  });
+
+  it('repassa DOCKER_HOST válido, senão o cliente docker cai no socket inexistente', async () => {
+    process.env.DOCKER_HOST = 'tcp://oraculo-docker:2375';
+
+    const executor = new ExecutorDiagnostico(() => '/usr/bin/docker');
+    const processo = prepararProcesso();
+    const promessa = executor.executar('docker', ['ps']);
+    processo.emit('close', 0);
+    await promessa;
+
+    const env = spawnFalso.mock.calls[0][2].env as Record<string, string>;
+
+    expect(env.DOCKER_HOST).toBe('tcp://oraculo-docker:2375');
+    expect(Object.keys(env).sort()).toEqual([
+      'DOCKER_HOST',
+      'LANG',
+      'LC_ALL',
+      'PATH',
+    ]);
+  });
+
+  it('recusa DOCKER_HOST malformado em vez de repassar', async () => {
+    process.env.DOCKER_HOST = 'tcp://alvo;rm -rf /';
+
+    const executor = new ExecutorDiagnostico(() => '/usr/bin/docker');
+    const processo = prepararProcesso();
+    const promessa = executor.executar('docker', ['ps']);
+    processo.emit('close', 0);
+    await promessa;
+
+    const env = spawnFalso.mock.calls[0][2].env as Record<string, string>;
+
+    expect(env.DOCKER_HOST).toBeUndefined();
+  });
+
+  it('não vaza segredo do processo pai para o filho', async () => {
+    process.env.SEGREDO_DO_ORACULO = 'nao-pode-vazar';
+    process.env.DOCKER_HOST = 'tcp://oraculo-docker:2375';
+
+    const executor = new ExecutorDiagnostico(() => '/usr/bin/docker');
+    const processo = prepararProcesso();
+    const promessa = executor.executar('docker', ['ps']);
+    processo.emit('close', 0);
+    await promessa;
+
+    const env = spawnFalso.mock.calls[0][2].env as Record<string, string>;
+
+    expect(JSON.stringify(env)).not.toContain('nao-pode-vazar');
+    delete process.env.SEGREDO_DO_ORACULO;
+  });
+});

@@ -19,6 +19,18 @@ const ENV_MINIMO: Readonly<Record<string, string>> = {
   LC_ALL: 'C',
 };
 
+const ENDERECO_DOCKER = /^(tcp|unix):\/\/[A-Za-z0-9._\-/:]+$/;
+
+function envDoProcesso(): Record<string, string> {
+  const alvoDocker = process.env.DOCKER_HOST?.trim();
+
+  if (alvoDocker && ENDERECO_DOCKER.test(alvoDocker)) {
+    return { ...ENV_MINIMO, DOCKER_HOST: alvoDocker };
+  }
+
+  return { ...ENV_MINIMO };
+}
+
 const TAMANHO_DO_DETALHE = 200;
 
 export interface ResultadoExecucao {
@@ -68,7 +80,7 @@ export class ExecutorDiagnostico {
       try {
         processo = spawn(caminho, [...argumentos], {
           cwd: '/',
-          env: { ...ENV_MINIMO },
+          env: envDoProcesso(),
           shell: false,
           windowsHide: true,
           stdio: ['ignore', 'pipe', 'pipe'],
