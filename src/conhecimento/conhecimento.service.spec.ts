@@ -375,6 +375,135 @@ describe('ConhecimentoService.enviarArquivo', () => {
   });
 });
 
+describe('ConhecimentoService.editarNota', () => {
+  it('regrava a nota e só então reindexa o mesmo caminho', async () => {
+    const { servico, indexacao } = montar();
+
+    statFalso.mockResolvedValue({});
+
+    const nota = await servico.editarNota('reuniao', '# Reunião\n\nnovo corpo');
+
+    expect(writeFileFalso).toHaveBeenCalledWith(
+      `${DIRETORIO}/reuniao.md`,
+      '# Reunião\n\nnovo corpo',
+      'utf-8',
+    );
+    expect(writeFileFalso.mock.invocationCallOrder[0]).toBeLessThan(
+      indexacao.indexarArquivo.mock.invocationCallOrder[0],
+    );
+    expect(indexacao.indexarArquivo).toHaveBeenCalledWith(
+      `${DIRETORIO}/reuniao.md`,
+    );
+    expect(nota).toEqual({
+      id: 'doc-1',
+      slug: 'reuniao',
+      caminho: `${DIRETORIO}/reuniao.md`,
+      trechosIndexados: 3,
+    });
+  });
+
+  it('grava o conteúdo exatamente como veio, sem inventar cabeçalho', async () => {
+    const { servico } = montar();
+
+    statFalso.mockResolvedValue({});
+
+    await servico.editarNota('reuniao', 'só um parágrafo solto');
+
+    expect(writeFileFalso).toHaveBeenCalledWith(
+      `${DIRETORIO}/reuniao.md`,
+      'só um parágrafo solto',
+      'utf-8',
+    );
+  });
+
+  it('registra a edição na auditoria', async () => {
+    const { servico, seguranca } = montar();
+
+    statFalso.mockResolvedValue({});
+
+    await servico.editarNota('reuniao', 'novo corpo', 'usuario-7');
+
+    expect(seguranca.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usuarioId: 'usuario-7',
+        tom: 'configuracao',
+        ferramentas: [
+          expect.objectContaining({ nome: 'conhecimento.nota.editar' }),
+        ],
+      }),
+    );
+  });
+
+  it('devolve 404 quando a nota não existe em disco', async () => {
+    const { servico, indexacao } = montar();
+
+    await expect(
+      servico.editarNota('inexistente', 'corpo'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(writeFileFalso).not.toHaveBeenCalled();
+    expect(indexacao.indexarArquivo).not.toHaveBeenCalled();
+  });
+
+  it('recusa travessia de caminho antes de tocar em disco', async () => {
+    const { servico, indexacao } = montar();
+
+    for (const slug of [
+      '../../etc/passwd',
+      'a/b',
+      '..',
+      '/etc/passwd',
+      'nota.md',
+      'NOTA',
+    ]) {
+      await expect(servico.editarNota(slug, 'corpo')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    }
+
+    expect(statFalso).not.toHaveBeenCalled();
+    expect(writeFileFalso).not.toHaveBeenCalled();
+    expect(indexacao.indexarArquivo).not.toHaveBeenCalled();
+  });
+
+  it('recusa conteúdo vazio ou só de espaço', async () => {
+    const { servico } = montar();
+
+    statFalso.mockResolvedValue({});
+
+    await expect(servico.editarNota('reuniao', '')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(servico.editarNota('reuniao', ' \n ')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(writeFileFalso).not.toHaveBeenCalled();
+  });
+
+  it('recusa conteúdo acima de 2 MB', async () => {
+    const { servico } = montar();
+
+    statFalso.mockResolvedValue({});
+
+    await expect(
+      servico.editarNota('reuniao', 'a'.repeat(TAMANHO_MAXIMO_BYTES + 1)),
+    ).rejects.toBeInstanceOf(PayloadTooLargeException);
+    expect(writeFileFalso).not.toHaveBeenCalled();
+  });
+
+  it('mantém a nota em disco quando a reindexação falha', async () => {
+    const { servico, indexacao } = montar();
+
+    statFalso.mockResolvedValue({});
+    indexacao.indexarArquivo.mockRejectedValue(new Error('pgvector fora'));
+
+    const nota = await servico.editarNota('reuniao', 'novo corpo');
+
+    expect(writeFileFalso).toHaveBeenCalled();
+    expect(nota.id).toBeNull();
+    expect(nota.trechosIndexados).toBe(0);
+  });
+});
+
 describe('ConhecimentoService.removerNota', () => {
   it('apaga o arquivo e os trechos do índice', async () => {
     const { servico, indexacao, seguranca } = montar();

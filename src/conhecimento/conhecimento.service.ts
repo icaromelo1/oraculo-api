@@ -161,6 +161,47 @@ export class ConhecimentoService {
     });
   }
 
+  async editarNota(
+    slug: string,
+    conteudo: string,
+    usuarioId?: string | null,
+  ): Promise<NotaGravada> {
+    const caminho = this.caminhoDaNota(slug);
+    const texto = conteudo ?? '';
+
+    if (!texto.trim()) {
+      throw new BadRequestException('conteudo é obrigatório');
+    }
+
+    if (Buffer.byteLength(texto, 'utf-8') > TAMANHO_MAXIMO_BYTES) {
+      throw new PayloadTooLargeException(
+        'conteudo passou do teto de 2 MB por nota',
+      );
+    }
+
+    if (!(await this.existe(caminho))) {
+      throw new NotFoundException(`nota "${slug}" não existe`);
+    }
+
+    await writeFile(caminho, texto, 'utf-8');
+
+    const indexado = await this.indexar(caminho);
+
+    await this.auditar(
+      usuarioId,
+      'conhecimento.nota.editar',
+      { slug, caminho },
+      `nota "${slug}" regravada em ${caminho} — ${indexado.trechos} trecho(s) reindexado(s)`,
+    );
+
+    return {
+      id: indexado.id,
+      slug,
+      caminho,
+      trechosIndexados: indexado.trechos,
+    };
+  }
+
   async removerNota(slug: string, usuarioId?: string | null): Promise<void> {
     const caminho = this.caminhoDaNota(slug);
     const existeNoDisco = await this.existe(caminho);

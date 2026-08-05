@@ -6,6 +6,8 @@ import {
   HttpCode,
   Param,
   Post,
+  Put,
+  Query,
   Req,
   UploadedFile,
   UseInterceptors,
@@ -13,19 +15,39 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import {
+  BibliotecaService,
+  DocumentoAberto,
+  ListaDocumentos,
+} from './biblioteca.service';
+import {
   ArquivoEnviado,
   ConhecimentoService,
   NotaGravada,
   TAMANHO_MAXIMO_BYTES,
 } from './conhecimento.service';
 import { CriarNotaDto } from './dto/criar-nota.dto';
+import { EditarNotaDto } from './dto/editar-nota.dto';
+import { validarListarDocumentosDto } from './dto/listar-documentos.dto';
 import { SlugNotaDto } from './dto/slug-nota.dto';
 
 export const CAMPO_DO_ARQUIVO = 'arquivo';
 
 @Controller('conhecimento')
 export class ConhecimentoController {
-  constructor(private readonly conhecimento: ConhecimentoService) {}
+  constructor(
+    private readonly conhecimento: ConhecimentoService,
+    private readonly biblioteca: BibliotecaService,
+  ) {}
+
+  @Get('documentos')
+  listarDocumentos(@Query() query: unknown): Promise<ListaDocumentos> {
+    return this.biblioteca.listar(validarListarDocumentosDto(query));
+  }
+
+  @Get('documentos/:id')
+  abrirDocumento(@Param('id') id: string): Promise<DocumentoAberto> {
+    return this.biblioteca.abrir(id);
+  }
 
   @Get('notas')
   listarNotas() {
@@ -51,6 +73,19 @@ export class ConhecimentoController {
     @Req() requisicao: RequisicaoAutenticada,
   ): Promise<NotaGravada> {
     return this.conhecimento.enviarArquivo(arquivo, this.usuarioId(requisicao));
+  }
+
+  @Put('notas/:slug')
+  editarNota(
+    @Param() parametros: SlugNotaDto,
+    @Body() corpo: EditarNotaDto,
+    @Req() requisicao: RequisicaoAutenticada,
+  ): Promise<NotaGravada> {
+    return this.conhecimento.editarNota(
+      parametros.slug,
+      corpo.conteudo,
+      this.usuarioId(requisicao),
+    );
   }
 
   @HttpCode(204)
