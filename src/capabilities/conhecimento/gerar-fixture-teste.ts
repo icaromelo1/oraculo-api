@@ -71,6 +71,7 @@ async function main() {
     embedding,
     documentoRepo,
     trechoRepo,
+    config,
   );
 
   const resumo = await indexacao.executar();

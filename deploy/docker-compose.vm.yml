@@ -1,4 +1,32 @@
 services:
+  oraculo-docker:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: oraculo-docker
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      INFO: 1
+      POST: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      EXEC: 0
+      IMAGES: 0
+      NETWORKS: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      VOLUMES: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [oraculo-net]
+
   oraculo-db:
     image: pgvector/pgvector:pg17
     container_name: oraculo-db
@@ -30,11 +58,15 @@ services:
       - ${HOME}/infra:/corpus/infra:ro
       - ${HOME}/projects:/corpus/projects:ro
       - ${HOME}/oraculo-workspace:/corpus/oraculo-workspace:ro
+      - ${HOME}/oraculo-notas:/corpus/notas
       - oraculo-modelos:/app/.cache/transformers
+      - /proc:/host/proc:ro
     networks: [oraculo-net, web]
     depends_on:
       oraculo-db:
         condition: service_healthy
+      oraculo-docker:
+        condition: service_started
     labels:
       - traefik.enable=true
       - traefik.http.routers.oraculo-api.rule=(Host(`icaromelodev.com.br`) || Host(`www.icaromelodev.com.br`)) && PathPrefix(`/oraculo-api`)

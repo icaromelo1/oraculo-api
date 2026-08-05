@@ -1,3 +1,4 @@
+import { classificar } from '../engine/fonte';
 import {
   calcularHash,
   construirProcedencia,
@@ -6,6 +7,27 @@ import {
 } from './procedencia';
 
 describe('inferirFonte', () => {
+  it('reconhece nota escrita pelo dono com autoridade 1', () => {
+    expect(inferirFonte('/corpus/notas/analise-do-deposito.md')).toEqual({
+      fonte: 'nota',
+      autoridade: 1,
+    });
+    expect(
+      inferirFonte('/home/ubuntu/oraculo-notas/notas/reuniao-2.md'),
+    ).toEqual({ fonte: 'nota', autoridade: 1 });
+  });
+
+  it('não confunde markdown fora do diretório de notas com nota', () => {
+    expect(inferirFonte('/corpus/projects/notas.md')).toEqual({
+      fonte: 'doc',
+      autoridade: 2,
+    });
+    expect(inferirFonte('/corpus/notas/sub/nota.md')).toEqual({
+      fonte: 'doc',
+      autoridade: 2,
+    });
+  });
+
   it('reconhece memória do Claude', () => {
     expect(
       inferirFonte(
@@ -80,6 +102,15 @@ describe('construirProcedencia', () => {
       titulo: 'T',
       hash: calcularHash('# T\ntexto'),
     });
+  });
+});
+
+describe('a nota chega ao front como fonte curada', () => {
+  it('mantém autoridade 1 da procedência até o contrato de eventos', () => {
+    const { fonte, autoridade } = inferirFonte('/corpus/notas/minha-nota.md');
+
+    expect(autoridade).toBe(1);
+    expect(classificar(fonte)).toBe('curado');
   });
 });
 

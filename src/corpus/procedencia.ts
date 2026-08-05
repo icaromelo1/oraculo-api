@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 
-export type Fonte = 'memoria' | 'agente' | 'doc' | 'config' | 'codigo';
+export type Fonte = 'nota' | 'memoria' | 'agente' | 'doc' | 'config' | 'codigo';
 
 export interface Procedencia {
   fonte: Fonte;
@@ -10,6 +10,7 @@ export interface Procedencia {
   hash: string;
 }
 
+const PADRAO_NOTA = /(^|\/)notas\/[^/]+\.md$/i;
 const PADRAO_MEMORIA =
   /(\.claude\/projects\/[^/]+\/memory\/[^/]+\.md$)|(\/memoria\/[^/]+\.md$)/i;
 const PADRAO_AGENTE =
@@ -17,11 +18,32 @@ const PADRAO_AGENTE =
 const PADRAO_CONFIG_VIVA =
   /(^|\/)(docker-compose[^/]*\.ya?ml|nginx\.conf)$|(^|\/)infra\//i;
 
-export function inferirFonte(caminho: string): {
+function dentroDoDiretorioDeNotas(
+  normalizado: string,
+  diretorioNotas?: string,
+): boolean {
+  if (!diretorioNotas) return false;
+
+  const raiz = diretorioNotas.replace(/\\/g, '/').replace(/\/+$/, '');
+
+  return raiz.length > 0 && normalizado.startsWith(`${raiz}/`);
+}
+
+export function inferirFonte(
+  caminho: string,
+  diretorioNotas?: string,
+): {
   fonte: Fonte;
   autoridade: number;
 } {
   const normalizado = caminho.replace(/\\/g, '/');
+
+  if (
+    PADRAO_NOTA.test(normalizado) ||
+    dentroDoDiretorioDeNotas(normalizado, diretorioNotas)
+  ) {
+    return { fonte: 'nota', autoridade: 1 };
+  }
 
   if (PADRAO_MEMORIA.test(normalizado)) {
     return { fonte: 'memoria', autoridade: 1 };
@@ -61,8 +83,9 @@ export function calcularHash(conteudo: string): string {
 export function construirProcedencia(
   caminho: string,
   conteudo: string,
+  diretorioNotas?: string,
 ): Procedencia {
-  const { fonte, autoridade } = inferirFonte(caminho);
+  const { fonte, autoridade } = inferirFonte(caminho, diretorioNotas);
 
   return {
     fonte,

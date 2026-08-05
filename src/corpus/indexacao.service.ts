@@ -5,6 +5,7 @@ import { pareceBinario } from '../capabilities/codigo/binario';
 import { Repository } from 'typeorm';
 import { Documento, Trecho } from '../database/entities';
 import { quebrarDocumento } from './chunking';
+import { OraculoConfig } from '../config/config.service';
 import { construirProcedencia } from './procedencia';
 import { VarreduraService } from './varredura.service';
 import { EmbeddingService } from './embedding.service';
@@ -21,6 +22,15 @@ export interface ResumoIndexacao {
   duracaoMs: number;
 }
 
+export type StatusArquivo =
+  'novo' | 'atualizado' | 'inalterado' | 'binario_ignorado';
+
+export interface ResultadoArquivo {
+  documentoId: string | null;
+  status: StatusArquivo;
+  trechos: number;
+}
+
 @Injectable()
 export class IndexacaoService {
   private readonly logger = new Logger(IndexacaoService.name);
@@ -32,6 +42,7 @@ export class IndexacaoService {
     private readonly documentos: Repository<Documento>,
     @InjectRepository(Trecho)
     private readonly trechos: Repository<Trecho>,
+    private readonly config: OraculoConfig,
   ) {}
 
   async executar(): Promise<ResumoIndexacao> {
@@ -45,70 +56,14 @@ export class IndexacaoService {
     let binariosIgnorados = 0;
 
     for (const arquivo of arquivos) {
-      const bruto = await readFile(arquivo.caminhoAbsoluto);
+      const resultado = await this.indexarArquivo(arquivo.caminhoAbsoluto);
 
-      if (pareceBinario(bruto)) {
-        binariosIgnorados += 1;
-        continue;
-      }
+      if (resultado.status === 'binario_ignorado') binariosIgnorados += 1;
+      if (resultado.status === 'inalterado') documentosInalterados += 1;
+      if (resultado.status === 'atualizado') documentosAtualizados += 1;
+      if (resultado.status === 'novo') documentosNovos += 1;
 
-      const conteudo = bruto.toString('utf-8').split(BYTE_NULO).join('');
-      const procedencia = construirProcedencia(
-        arquivo.caminhoAbsoluto,
-        conteudo,
-      );
-
-      const existente = await this.documentos.findOne({
-        where: { caminho: arquivo.caminhoAbsoluto },
-      });
-
-      if (existente && existente.hash === procedencia.hash) {
-        documentosInalterados += 1;
-        continue;
-      }
-
-      const documentoSalvo = await this.documentos.save({
-        ...(existente ? { id: existente.id } : {}),
-        caminho: arquivo.caminhoAbsoluto,
-        fonte: procedencia.fonte,
-        autoridade: procedencia.autoridade,
-        titulo: procedencia.titulo,
-        hash: procedencia.hash,
-        atualizadoEm: new Date(),
-        meta: existente?.meta ?? null,
-      });
-
-      if (existente) {
-        await this.trechos
-          .createQueryBuilder()
-          .delete()
-          .where('documento_id = :id', { id: documentoSalvo.id })
-          .execute();
-        documentosAtualizados += 1;
-      } else {
-        documentosNovos += 1;
-      }
-
-      const brutos = quebrarDocumento(arquivo.caminhoAbsoluto, conteudo);
-      if (brutos.length === 0) continue;
-
-      const embeddings = await this.embedding.embutir(
-        brutos.map((bruto) => bruto.texto),
-      );
-
-      const entidades = brutos.map((bruto, indice) =>
-        this.trechos.create({
-          documento: documentoSalvo,
-          ordem: bruto.ordem,
-          texto: bruto.texto,
-          linhaInicio: bruto.linhaInicio,
-          linhaFim: bruto.linhaFim,
-          embedding: embeddings[indice] ?? null,
-        }),
-      );
-
-      await this.trechos.save(entidades);
-      trechosGerados += entidades.length;
+      trechosGerados += resultado.trechos;
     }
 
     const duracaoMs = Date.now() - inicio;
@@ -129,5 +84,101 @@ export class IndexacaoService {
       binariosIgnorados,
       duracaoMs,
     };
+  }
+
+  async indexarArquivo(caminhoAbsoluto: string): Promise<ResultadoArquivo> {
+    const bruto = await readFile(caminhoAbsoluto);
+
+    if (pareceBinario(bruto)) {
+      return { documentoId: null, status: 'binario_ignorado', trechos: 0 };
+    }
+
+    const conteudo = bruto.toString('utf-8').split(BYTE_NULO).join('');
+    const procedencia = construirProcedencia(
+      caminhoAbsoluto,
+      conteudo,
+      this.config.corpus.notas,
+    );
+
+    const existente = await this.documentos.findOne({
+      where: { caminho: caminhoAbsoluto },
+    });
+
+    if (existente && existente.hash === procedencia.hash) {
+      return {
+        documentoId: existente.id,
+        status: 'inalterado',
+        trechos: 0,
+      };
+    }
+
+    const documentoSalvo = await this.documentos.save({
+      ...(existente ? { id: existente.id } : {}),
+      caminho: caminhoAbsoluto,
+      fonte: procedencia.fonte,
+      autoridade: procedencia.autoridade,
+      titulo: procedencia.titulo,
+      hash: procedencia.hash,
+      atualizadoEm: new Date(),
+      meta: existente?.meta ?? null,
+    });
+
+    const status: StatusArquivo = existente ? 'atualizado' : 'novo';
+
+    if (existente) {
+      await this.apagarTrechos(documentoSalvo.id);
+    }
+
+    const brutos = quebrarDocumento(caminhoAbsoluto, conteudo);
+
+    if (brutos.length === 0) {
+      return { documentoId: documentoSalvo.id, status, trechos: 0 };
+    }
+
+    const embeddings = await this.embedding.embutir(
+      brutos.map((pedaco) => pedaco.texto),
+    );
+
+    const entidades = brutos.map((pedaco, indice) =>
+      this.trechos.create({
+        documento: documentoSalvo,
+        ordem: pedaco.ordem,
+        texto: pedaco.texto,
+        linhaInicio: pedaco.linhaInicio,
+        linhaFim: pedaco.linhaFim,
+        embedding: embeddings[indice] ?? null,
+      }),
+    );
+
+    await this.trechos.save(entidades);
+
+    return {
+      documentoId: documentoSalvo.id,
+      status,
+      trechos: entidades.length,
+    };
+  }
+
+  async removerArquivo(caminhoAbsoluto: string): Promise<boolean> {
+    const existente = await this.documentos.findOne({
+      where: { caminho: caminhoAbsoluto },
+    });
+
+    if (!existente) {
+      return false;
+    }
+
+    await this.apagarTrechos(existente.id);
+    await this.documentos.delete({ id: existente.id });
+
+    return true;
+  }
+
+  private async apagarTrechos(documentoId: string): Promise<void> {
+    await this.trechos
+      .createQueryBuilder()
+      .delete()
+      .where('documento_id = :id', { id: documentoId })
+      .execute();
   }
 }
