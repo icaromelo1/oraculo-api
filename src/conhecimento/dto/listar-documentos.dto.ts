@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import type { Fonte } from '../../corpus/procedencia';
 
-export const FONTES_DO_CORPUS: Fonte[] = [
+const FONTES_DO_CORPUS: Fonte[] = [
   'nota',
   'memoria',
   'agente',
@@ -13,8 +13,8 @@ export const FONTES_DO_CORPUS: Fonte[] = [
 export const PAGINA_PADRAO = 1;
 export const POR_PAGINA_PADRAO = 30;
 export const POR_PAGINA_TETO = 100;
-export const AUTORIDADE_MINIMA = 1;
-export const AUTORIDADE_MAXIMA = 4;
+const AUTORIDADE_MINIMA = 1;
+const AUTORIDADE_MAXIMA = 4;
 
 export class ListarDocumentosDto {
   busca?: string;

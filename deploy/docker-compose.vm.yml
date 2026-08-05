@@ -53,6 +53,9 @@ services:
     volumes:
       - ${HOME}/.local/bin/agy:/usr/local/bin/agy:ro
       - ${HOME}/.gemini:/root/.gemini
+      - /usr/local/bin/claude:/usr/local/bin/claude:ro
+      - ${HOME}/.claude/.credentials.json:/root/.claude/.credentials.json:ro
+      - ${HOME}/.claude.json:/root/.claude.json:ro
       - ${HOME}/.claude/projects:/corpus/.claude/projects:ro
       - ${HOME}/claude-workspace-config:/corpus/claude-workspace-config:ro
       - ${HOME}/infra:/corpus/infra:ro

@@ -26,6 +26,7 @@ export interface Capacidade {
   readonly sensivel: boolean;
   readonly chaveEnv: 'conhecimento' | 'codigo' | 'estado' | 'banco';
   readonly parametros: ParametroCapacidade[];
+  alcancaAlgo?(): boolean;
   executar(
     argumentos: Record<string, unknown>,
     contexto: ContextoExecucao,

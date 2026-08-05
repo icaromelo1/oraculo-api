@@ -87,7 +87,6 @@ export class OraculoConfig {
     return {
       maxIteracoes: this.ler('ENGINE_MAX_ITERACOES'),
       maxTokensSaida: this.ler('ENGINE_MAX_TOKENS_SAIDA'),
-      guardiao: this.ler('GUARD_MODE') === 'on',
     };
   }
 

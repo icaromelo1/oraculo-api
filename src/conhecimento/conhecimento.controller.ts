@@ -30,7 +30,7 @@ import { EditarNotaDto } from './dto/editar-nota.dto';
 import { validarListarDocumentosDto } from './dto/listar-documentos.dto';
 import { SlugNotaDto } from './dto/slug-nota.dto';
 
-export const CAMPO_DO_ARQUIVO = 'arquivo';
+const CAMPO_DO_ARQUIVO = 'arquivo';
 
 @Controller('conhecimento')
 export class ConhecimentoController {

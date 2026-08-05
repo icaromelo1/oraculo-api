@@ -165,3 +165,34 @@ describe('RegistryCapacidades', () => {
     expect(registry.disponiveisPara(alcance)).toEqual([conhecimento]);
   });
 });
+
+describe('capacidade que não alcança nada', () => {
+  it('não é oferecida ao modelo quando declara alcance vazio', () => {
+    const semAlcance: Capacidade = {
+      ...capacidadeFalsa('buscar_conhecimento', 'conhecimento'),
+      alcancaAlgo: () => false,
+    };
+
+    const registry = new RegistryCapacidades(configFalsa({}), [semAlcance]);
+
+    expect(registry.disponiveisPara(alcance)).toEqual([]);
+  });
+
+  it('é oferecida quando declara que alcança', () => {
+    const comAlcance: Capacidade = {
+      ...capacidadeFalsa('buscar_conhecimento', 'conhecimento'),
+      alcancaAlgo: () => true,
+    };
+
+    const registry = new RegistryCapacidades(configFalsa({}), [comAlcance]);
+
+    expect(registry.disponiveisPara(alcance)).toEqual([comAlcance]);
+  });
+
+  it('capacidade sem o método continua disponível', () => {
+    const simples = capacidadeFalsa('buscar_conhecimento', 'conhecimento');
+    const registry = new RegistryCapacidades(configFalsa({}), [simples]);
+
+    expect(registry.disponiveisPara(alcance)).toEqual([simples]);
+  });
+});

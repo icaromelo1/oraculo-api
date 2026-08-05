@@ -1,7 +1,7 @@
 import { Transform } from 'class-transformer';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
-export const TAMANHO_MAXIMO_TITULO = 200;
+const TAMANHO_MAXIMO_TITULO = 200;
 export const TAMANHO_MAXIMO_CONTEUDO = 2 * 1024 * 1024;
 
 const aparar = ({ value }: { value: unknown }): unknown =>

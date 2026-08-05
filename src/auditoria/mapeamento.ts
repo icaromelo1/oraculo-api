@@ -26,8 +26,6 @@ const SIGLA_POR_TIPO: Record<TipoFerramentaAuditoria, string> = {
   shell: 'sh',
 };
 
-const TONS_DE_BLOQUEIO_DEDICADO = ['bloqueio', 'aprovacao_exigida'];
-
 export const CATEGORIA_RESULTADO_SQL = `
   CASE
     WHEN auditoria.tom IN ('bloqueio', 'bloqueio_parcial') THEN 'bloqueado'
@@ -37,10 +35,6 @@ export const CATEGORIA_RESULTADO_SQL = `
     ELSE 'ok'
   END
 `;
-
-export function ehRegistroDeTurno(tom: string): boolean {
-  return !TONS_DE_BLOQUEIO_DEDICADO.includes(tom);
-}
 
 function listaExecucoes(auditoria: Auditoria): ExecucaoAuditada[] {
   const itens = (auditoria.ferramentas as { itens?: unknown } | null)?.itens;
@@ -76,7 +70,7 @@ function paraFerramenta(
   return { sigla: bloqueada ? `${sigla}✕` : sigla, tipo, bloqueada };
 }
 
-export function montarFerramentas(auditoria: Auditoria): FerramentaAuditoria[] {
+function montarFerramentas(auditoria: Auditoria): FerramentaAuditoria[] {
   const execucoes = listaExecucoes(auditoria);
 
   if (execucoes.length > 0) {
@@ -96,7 +90,7 @@ interface Categorizacao {
   resultado: string;
 }
 
-export function categorizar(auditoria: Auditoria): Categorizacao {
+function categorizar(auditoria: Auditoria): Categorizacao {
   const primeiroBloqueio = listaBloqueios(auditoria)[0];
 
   if (auditoria.tom === 'bloqueio' || auditoria.tom === 'bloqueio_parcial') {
@@ -158,13 +152,13 @@ export function categorizar(auditoria: Auditoria): Categorizacao {
   return { categoria: 'ok', tomResultado: 'ok', resultado: 'ok' };
 }
 
-export function formatarHora(data: Date): string {
+function formatarHora(data: Date): string {
   const preencher = (numero: number) => numero.toString().padStart(2, '0');
 
   return `${preencher(data.getHours())}:${preencher(data.getMinutes())}:${preencher(data.getSeconds())}`;
 }
 
-export function formatarDuracao(duracaoMs: number): string {
+function formatarDuracao(duracaoMs: number): string {
   const segundos = (duracaoMs / 1000).toFixed(1).replace('.', ',');
 
   return `${segundos} s`;

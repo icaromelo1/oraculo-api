@@ -50,6 +50,10 @@ export class BuscarCodigoCapacidade implements Capacidade {
 
   constructor(private readonly config: OraculoConfig) {}
 
+  alcancaAlgo(): boolean {
+    return resolverRaizes(this.config.escopos.repos).length > 0;
+  }
+
   async executar(
     argumentos: Record<string, unknown>,
   ): Promise<ResultadoCapacidade> {

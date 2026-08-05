@@ -19,7 +19,10 @@ import {
   ServicoObservavel,
   Usuario,
 } from '../database/entities';
-import type { RaizResolvida } from '../capabilities/codigo/seguranca';
+import {
+  resolverRaizes,
+  type RaizResolvida,
+} from '../capabilities/codigo/seguranca';
 import { casaAlgumPadrao } from '../corpus/denylist';
 import { SecurityService } from '../security/security.service';
 import { CifraService, ResumoConexao } from './cifra.service';
@@ -32,7 +35,7 @@ import {
 
 export type NomeCapacidade = `${NomeCapacidadeInstalacao}`;
 
-export const CAPACIDADES: NomeCapacidade[] = [
+const CAPACIDADES: NomeCapacidade[] = [
   'conhecimento',
   'codigo',
   'estado',
@@ -51,6 +54,7 @@ export interface CapacidadeEfetiva {
   ligada: boolean;
   tetoDoEnv: boolean;
   motivoIndisponivel?: string;
+  aviso?: string;
 }
 
 export interface FonteEfetiva {
@@ -473,6 +477,14 @@ export class ConfiguracaoService implements OnModuleInit {
     return this.instantaneo;
   }
 
+  private avisoDeAlcance(capacidade: NomeCapacidade): string | undefined {
+    if (capacidade !== 'codigo') return undefined;
+
+    if (resolverRaizes(this.config.escopos.repos).length > 0) return undefined;
+
+    return 'ligada, mas CODIGO_REPOS não aponta para nenhuma pasta existente — a busca no código não alcança nada e a ferramenta não é oferecida ao modelo';
+  }
+
   private async ehDiretorio(caminho: string): Promise<boolean> {
     try {
       return (await stat(caminho)).isDirectory();
@@ -523,11 +535,13 @@ export class ConfiguracaoService implements OnModuleInit {
         (item) => String(item.capacidade) === String(capacidade),
       );
       const ligada = linha ? linha.ligada : tetoDoEnv;
+      const aviso = ligada ? this.avisoDeAlcance(capacidade) : undefined;
 
       return {
         capacidade,
         ligada,
         tetoDoEnv,
+        ...(aviso ? { aviso } : {}),
         ...(ligada
           ? {}
           : { motivoIndisponivel: 'desligada na configuração do Oráculo' }),

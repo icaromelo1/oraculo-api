@@ -45,10 +45,15 @@ export class RegistryCapacidades {
     );
   }
 
+  alcancaAlgo(capacidade: Capacidade): boolean {
+    return capacidade.alcancaAlgo?.() ?? true;
+  }
+
   disponiveisPara(alcance: AlcancePerfil): Capacidade[] {
     return this.todas().filter(
       (capacidade) =>
         this.ligadaNaInstalacao(capacidade) &&
+        this.alcancaAlgo(capacidade) &&
         this.alcancadaPeloPerfil(capacidade, alcance),
     );
   }

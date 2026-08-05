@@ -25,7 +25,7 @@ export function limparMarcadores(
   );
 }
 
-export function idsCitados(texto: string): string[] {
+function idsCitados(texto: string): string[] {
   return [...texto.matchAll(marcador())].map((achado) => achado[1]);
 }
 

@@ -5,6 +5,8 @@
     "test",
     "dist",
     "scripts",
-    "**/*spec.ts"
+    "**/*spec.ts",
+    "**/*-falso.ts",
+    "**/*-falsa.ts"
   ]
 }

@@ -38,7 +38,7 @@ export interface NotaListada {
 }
 
 export const TAMANHO_MAXIMO_BYTES = 2 * 1024 * 1024;
-export const EXTENSOES_ACEITAS = ['.md', '.txt'];
+const EXTENSOES_ACEITAS = ['.md', '.txt'];
 
 const EXTENSAO_GRAVADA = '.md';
 const ASSINATURA_PDF = '%PDF-';

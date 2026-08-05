@@ -81,8 +81,6 @@ export const envSchema = z.object({
     z.string().min(32, 'CONFIG_SECRET precisa de ao menos 32 caracteres'),
   ),
 
-  GUARD_MODE: z.enum(['on', 'off']).default('off'),
-
   ENGINE_MAX_ITERACOES: z.coerce.number().int().positive().default(8),
   ENGINE_MAX_TOKENS_SAIDA: z.coerce.number().int().positive().default(4000),
 

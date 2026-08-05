@@ -104,7 +104,7 @@ function configFalsa(maxIteracoes: number): OraculoConfig {
     },
     escopos: { repos: ['/repos'], comandos: [], bancos: ['oraculo'] },
     corpus: { fontes: ['/docs'], negados: [] },
-    engine: { maxIteracoes, maxTokensSaida: 500, guardiao: false },
+    engine: { maxIteracoes, maxTokensSaida: 500 },
   } as OraculoConfig;
 }
 
