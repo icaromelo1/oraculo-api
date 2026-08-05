@@ -275,7 +275,7 @@ describe('ambiente do processo filho', () => {
     processo.emit('close', 0);
     await promessa;
 
-    const opcoes = spawnFalso.mock.calls[0][2] as {
+    const opcoes = (spawnFalso.mock.calls as unknown[][])[0][2] as {
       env: Record<string, string>;
     };
     const env = opcoes.env;
@@ -298,7 +298,7 @@ describe('ambiente do processo filho', () => {
     processo.emit('close', 0);
     await promessa;
 
-    const opcoes = spawnFalso.mock.calls[0][2] as {
+    const opcoes = (spawnFalso.mock.calls as unknown[][])[0][2] as {
       env: Record<string, string>;
     };
     const env = opcoes.env;
@@ -316,7 +316,7 @@ describe('ambiente do processo filho', () => {
     processo.emit('close', 0);
     await promessa;
 
-    const opcoes = spawnFalso.mock.calls[0][2] as {
+    const opcoes = (spawnFalso.mock.calls as unknown[][])[0][2] as {
       env: Record<string, string>;
     };
     const env = opcoes.env;
