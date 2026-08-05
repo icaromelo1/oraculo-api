@@ -43,6 +43,8 @@ const SQL_LEXICAL = `
   LIMIT $2
 `;
 
+const SONDAS_IVFFLAT = 10;
+
 const SQL_VETORIAL = `
   SELECT
     t.id AS id,
@@ -155,7 +157,14 @@ export class BuscarConhecimentoCapacidade implements Capacidade {
     });
     const literalVetor = `[${vetor.join(',')}]`;
 
-    return this.trechos.query(SQL_VETORIAL, [literalVetor, poolTamanho]);
+    return this.trechos.manager.transaction(async (gerente) => {
+      await gerente.query(`SET LOCAL ivfflat.probes = ${SONDAS_IVFFLAT}`);
+
+      return gerente.query<LinhaTrecho[]>(SQL_VETORIAL, [
+        literalVetor,
+        poolTamanho,
+      ]);
+    });
   }
 
   private paraRetorno(item: LinhaTrecho): RetornoFerramenta {
