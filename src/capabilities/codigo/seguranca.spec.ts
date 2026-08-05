@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   mkdtempSync,
   mkdirSync,
@@ -12,6 +15,7 @@ import {
   resolverRaizes,
   tamanhoDoArquivo,
   validarCaminhoDentroDasRaizes,
+  raizesComConteudo,
 } from './seguranca';
 
 describe('seguranca do executor de codigo', () => {
@@ -116,5 +120,31 @@ describe('seguranca do executor de codigo', () => {
       tamanhoDoArquivo(join(raizRepo, 'sub', 'arquivo.ts')),
     ).toBeGreaterThan(0);
     expect(tamanhoDoArquivo(join(raizRepo, 'fantasma.ts'))).toBeNull();
+  });
+});
+
+describe('raizesComConteudo', () => {
+  let raiz: string;
+
+  beforeEach(async () => {
+    raiz = await mkdtemp(join(tmpdir(), 'oraculo-raiz-'));
+  });
+
+  afterEach(async () => {
+    await rm(raiz, { recursive: true, force: true });
+  });
+
+  it('não conta raiz que existe mas está vazia', () => {
+    expect(raizesComConteudo([raiz])).toEqual([]);
+  });
+
+  it('conta raiz com pelo menos um arquivo', async () => {
+    await writeFile(join(raiz, 'a.ts'), 'const a = 1;');
+
+    expect(raizesComConteudo([raiz])).toHaveLength(1);
+  });
+
+  it('não conta raiz inexistente', () => {
+    expect(raizesComConteudo([join(raiz, 'nao-existe')])).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import { realpathSync, statSync } from 'node:fs';
+import { readdirSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 export interface RaizResolvida {
@@ -24,6 +24,16 @@ export function resolverRaizes(raizes: readonly string[]): RaizResolvida[] {
   }
 
   return resolvidas;
+}
+
+export function raizesComConteudo(raizes: readonly string[]): RaizResolvida[] {
+  return resolverRaizes(raizes).filter((raiz) => {
+    try {
+      return readdirSync(raiz.real).length > 0;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export function validarCaminhoDentroDasRaizes(

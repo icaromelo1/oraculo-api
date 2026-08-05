@@ -9,6 +9,7 @@ import type {
 } from '../capacidade';
 import { pareceBinario } from './binario';
 import {
+  raizesComConteudo,
   arquivoRegular,
   resolverRaizes,
   tamanhoDoArquivo,
@@ -49,7 +50,7 @@ export class LerArquivoCapacidade implements Capacidade {
   constructor(private readonly config: OraculoConfig) {}
 
   alcancaAlgo(): boolean {
-    return resolverRaizes(this.config.escopos.repos).length > 0;
+    return raizesComConteudo(this.config.escopos.repos).length > 0;
   }
 
   async executar(

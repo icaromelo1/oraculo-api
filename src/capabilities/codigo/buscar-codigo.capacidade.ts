@@ -11,6 +11,7 @@ import type {
 import { analisarSaidaDoGrep, executarGitGrep } from './git-grep';
 import {
   arquivoRegular,
+  raizesComConteudo,
   resolverRaizes,
   validarCaminhoDentroDasRaizes,
   type RaizResolvida,
@@ -51,7 +52,7 @@ export class BuscarCodigoCapacidade implements Capacidade {
   constructor(private readonly config: OraculoConfig) {}
 
   alcancaAlgo(): boolean {
-    return resolverRaizes(this.config.escopos.repos).length > 0;
+    return raizesComConteudo(this.config.escopos.repos).length > 0;
   }
 
   async executar(

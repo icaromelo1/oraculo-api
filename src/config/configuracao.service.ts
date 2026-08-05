@@ -20,7 +20,7 @@ import {
   Usuario,
 } from '../database/entities';
 import {
-  resolverRaizes,
+  raizesComConteudo,
   type RaizResolvida,
 } from '../capabilities/codigo/seguranca';
 import { casaAlgumPadrao } from '../corpus/denylist';
@@ -480,9 +480,10 @@ export class ConfiguracaoService implements OnModuleInit {
   private avisoDeAlcance(capacidade: NomeCapacidade): string | undefined {
     if (capacidade !== 'codigo') return undefined;
 
-    if (resolverRaizes(this.config.escopos.repos).length > 0) return undefined;
+    if (raizesComConteudo(this.config.escopos.repos).length > 0)
+      return undefined;
 
-    return 'ligada, mas CODIGO_REPOS não aponta para nenhuma pasta existente — a busca no código não alcança nada e a ferramenta não é oferecida ao modelo';
+    return 'ligada, mas CODIGO_REPOS não aponta para nenhuma pasta com conteúdo — a busca no código não alcança nada e a ferramenta não é oferecida ao modelo';
   }
 
   private async ehDiretorio(caminho: string): Promise<boolean> {
