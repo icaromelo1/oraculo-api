@@ -103,6 +103,7 @@ const FORMATO_CONTAINERES = [
   'imagem={{.Image}}',
   'estado={{.Status}}',
   'de_pe_ha={{.RunningFor}}',
+  'portas={{.Ports}}',
 ].join('\t');
 
 const FORMATO_ESTADO = [
@@ -119,7 +120,7 @@ const ENTRADAS: readonly EntradaCatalogo[] = [
   {
     id: 'servicos_ativos',
     descricao:
-      'lista os containers de pé com nome do serviço, imagem, estado e há quanto tempo estão rodando',
+      'lista os serviços cadastrados que estão de pé, com imagem, estado, tempo de pé e as portas publicadas',
     argumentos: [],
     passos: [
       {
@@ -153,7 +154,7 @@ const ENTRADAS: readonly EntradaCatalogo[] = [
   {
     id: 'portas_escutando',
     descricao:
-      'lista as portas TCP em escuta e o processo dono de cada uma (o endereço é mascarado, a porta não)',
+      'lista as portas TCP em escuta pelo próprio Oráculo (o endereço é mascarado, a porta não) — para as portas dos serviços da máquina, use servicos_ativos',
     argumentos: [],
     passos: [
       {
