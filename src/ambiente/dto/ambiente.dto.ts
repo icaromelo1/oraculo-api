@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import type {
+  NovaFonte,
   NovoAlvoBanco,
   NovoServico,
 } from '../../config/configuracao.service';
@@ -51,6 +52,17 @@ export function validarDefinirCapacidadeDto(
   return {
     capacidade: textoObrigatorio(capacidade, 'capacidade'),
     ligada,
+  };
+}
+
+export function validarNovaFonteDto(corpo: unknown): NovaFonte {
+  const { caminho, rotulo } = objeto(corpo);
+
+  return {
+    caminho: textoObrigatorio(caminho, 'caminho'),
+    ...(typeof rotulo === 'string' && rotulo.trim()
+      ? { rotulo: rotulo.trim() }
+      : {}),
   };
 }
 

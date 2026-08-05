@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
@@ -14,6 +15,7 @@ import { ConfiguracaoService } from '../config/configuracao.service';
 import { AmbienteService } from './ambiente.service';
 import {
   validarDefinirCapacidadeDto,
+  validarNovaFonteDto,
   validarNovoAlvoBancoDto,
   validarNovoServicoDto,
 } from './dto/ambiente.dto';
@@ -30,6 +32,11 @@ export class AmbienteController {
     return this.ambiente.estado();
   }
 
+  @Get('fontes/previa')
+  previaDeFonte(@Query('caminho') caminho: string) {
+    return this.ambiente.previaDeFonte(caminho);
+  }
+
   @Patch('capacidades')
   definirCapacidade(
     @Body() corpo: unknown,
@@ -42,6 +49,23 @@ export class AmbienteController {
       pedido.ligada,
       this.usuarioId(requisicao),
     );
+  }
+
+  @Post('fontes')
+  criarFonte(@Body() corpo: unknown, @Req() requisicao: RequisicaoAutenticada) {
+    return this.configuracao.criarFonte(
+      validarNovaFonteDto(corpo),
+      this.usuarioId(requisicao),
+    );
+  }
+
+  @HttpCode(204)
+  @Delete('fontes/:id')
+  async removerFonte(
+    @Param('id') id: string,
+    @Req() requisicao: RequisicaoAutenticada,
+  ): Promise<void> {
+    await this.configuracao.removerFonte(id, this.usuarioId(requisicao));
   }
 
   @Post('servicos')

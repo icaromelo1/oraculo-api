@@ -1,5 +1,8 @@
+import { stat } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -16,9 +19,16 @@ import {
   ServicoObservavel,
   Usuario,
 } from '../database/entities';
+import type { RaizResolvida } from '../capabilities/codigo/seguranca';
+import { casaAlgumPadrao } from '../corpus/denylist';
 import { SecurityService } from '../security/security.service';
 import { CifraService, ResumoConexao } from './cifra.service';
 import { OraculoConfig } from './config.service';
+import {
+  CaminhoNaRaiz,
+  raizesPermitidas,
+  resolverCaminhoNasRaizes,
+} from './raiz-permitida';
 
 export type NomeCapacidade = `${NomeCapacidadeInstalacao}`;
 
@@ -81,6 +91,11 @@ export interface NovoServico {
   rotulo: string;
 }
 
+export interface NovaFonte {
+  caminho: string;
+  rotulo?: string;
+}
+
 interface Instantaneo {
   capacidades: CapacidadeEfetiva[];
   fontes: FonteEfetiva[];
@@ -136,6 +151,14 @@ export class ConfiguracaoService implements OnModuleInit {
 
   async fontesEfetivas(): Promise<FonteEfetiva[]> {
     return (await this.estado()).fontes;
+  }
+
+  raizesDeLeitura(): RaizResolvida[] {
+    return raizesPermitidas(this.config);
+  }
+
+  async resolverCaminhoDeFonte(caminho: string): Promise<CaminhoNaRaiz> {
+    return resolverCaminhoNasRaizes(caminho, this.raizesDeLeitura());
   }
 
   async alvosBanco(): Promise<AlvoBancoResumido[]> {
@@ -214,6 +237,84 @@ export class ConfiguracaoService implements OnModuleInit {
     );
 
     return atual as CapacidadeEfetiva;
+  }
+
+  async criarFonte(
+    nova: NovaFonte,
+    usuarioId?: string | null,
+  ): Promise<FonteEfetiva> {
+    this.exigirTeto('conhecimento');
+
+    const resolvido = await this.resolverCaminhoDeFonte(nova.caminho);
+
+    if (!resolvido.existe || !(await this.ehDiretorio(resolvido.real))) {
+      throw new BadRequestException(
+        `"${nova.caminho}" não é uma pasta legível nesta instalação`,
+      );
+    }
+
+    const nome = basename(resolvido.real);
+
+    if (casaAlgumPadrao(nome, this.config.corpus.negados)) {
+      throw new BadRequestException(
+        `a pasta "${nome}" casa com a denylist do corpus — nenhum arquivo dela seria indexado`,
+      );
+    }
+
+    const jaExiste = await this.fontes.findOne({
+      where: { caminho: resolvido.real },
+    });
+
+    if (jaExiste) {
+      throw new ConflictException(
+        `a pasta "${resolvido.real}" já está cadastrada como fonte`,
+      );
+    }
+
+    const salva = await this.fontes.save(
+      this.fontes.create({
+        caminho: resolvido.real,
+        rotulo: nova.rotulo?.trim() || nome,
+        ativa: true,
+        criadaPor: this.referenciaUsuario(usuarioId),
+      }),
+    );
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.fonte.criar',
+      { caminho: salva.caminho, rotulo: salva.rotulo },
+      `fonte de conhecimento "${salva.rotulo}" cadastrada em ${salva.caminho} (antes: inexistente)`,
+    );
+
+    return {
+      id: salva.id,
+      caminho: salva.caminho,
+      rotulo: salva.rotulo,
+      origem: 'banco',
+      removivel: true,
+    };
+  }
+
+  async removerFonte(id: string, usuarioId?: string | null): Promise<void> {
+    const existente = await this.fontes.findOne({ where: { id } });
+
+    if (!existente) {
+      throw new NotFoundException(`fonte de conhecimento "${id}" não existe`);
+    }
+
+    await this.fontes.delete({ id });
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.fonte.remover',
+      { id, caminho: existente.caminho },
+      `fonte de conhecimento "${existente.rotulo}" removida (antes: ${existente.caminho})`,
+    );
   }
 
   async criarServico(
@@ -370,6 +471,14 @@ export class ConfiguracaoService implements OnModuleInit {
     }
 
     return this.instantaneo;
+  }
+
+  private async ehDiretorio(caminho: string): Promise<boolean> {
+    try {
+      return (await stat(caminho)).isDirectory();
+    } catch {
+      return false;
+    }
   }
 
   private async invalidar(): Promise<void> {

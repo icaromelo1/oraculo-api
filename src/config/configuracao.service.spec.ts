@@ -1,4 +1,19 @@
 import { randomUUID } from 'node:crypto';
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import {
   AlvoBanco,
@@ -469,5 +484,124 @@ describe('ConfiguracaoService — auditoria', () => {
     expect(registroDe(registrar, 0).resultado).toBe(
       'serviço observável "base-api" criado (antes: inexistente)',
     );
+  });
+});
+
+describe('ConfiguracaoService — cadastro de fonte', () => {
+  let raiz: string;
+
+  beforeEach(async () => {
+    raiz = await realpath(await mkdtemp(join(tmpdir(), 'oraculo-fonte-')));
+  });
+
+  afterEach(async () => {
+    await rm(raiz, { recursive: true, force: true });
+  });
+
+  it('cadastra uma pasta que está dentro da raiz permitida', async () => {
+    await mkdir(join(raiz, 'anotacoes'));
+    const { servico, registrar } = montar({ fontes: [raiz] });
+
+    const fonte = await servico.criarFonte({
+      caminho: join(raiz, 'anotacoes'),
+    });
+
+    expect(fonte).toMatchObject({
+      caminho: join(raiz, 'anotacoes'),
+      rotulo: 'anotacoes',
+      origem: 'banco',
+      removivel: true,
+    });
+    expect(registrar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ferramentas: [
+          expect.objectContaining({ nome: 'ambiente.fonte.criar' }),
+        ],
+      }),
+    );
+  });
+
+  it('recusa pasta fora da raiz permitida', async () => {
+    const fora = await realpath(await mkdtemp(join(tmpdir(), 'oraculo-fora-')));
+    const { servico, fontes } = montar({ fontes: [raiz] });
+
+    await expect(servico.criarFonte({ caminho: fora })).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(fontes.dados).toHaveLength(0);
+
+    await rm(fora, { recursive: true, force: true });
+  });
+
+  it('recusa symlink que aponta para fora da raiz permitida', async () => {
+    const fora = await realpath(await mkdtemp(join(tmpdir(), 'oraculo-alvo-')));
+    const atalho = join(raiz, 'atalho');
+    await symlink(fora, atalho);
+
+    const { servico, fontes } = montar({ fontes: [raiz] });
+
+    await expect(servico.criarFonte({ caminho: atalho })).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(fontes.dados).toHaveLength(0);
+
+    await rm(fora, { recursive: true, force: true });
+  });
+
+  it('recusa arquivo — fonte precisa ser pasta', async () => {
+    const arquivo = join(raiz, 'solto.md');
+    await writeFile(arquivo, '# nota');
+    const { servico } = montar({ fontes: [raiz] });
+
+    await expect(servico.criarFonte({ caminho: arquivo })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('recusa pasta cujo nome casa com a denylist — não indexaria nada', async () => {
+    await mkdir(join(raiz, 'node_modules'));
+    const { servico } = montar({ fontes: [raiz] });
+    servico['config'].corpus.negados = ['node_modules'];
+
+    await expect(
+      servico.criarFonte({ caminho: join(raiz, 'node_modules') }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('recusa cadastrar a mesma pasta duas vezes', async () => {
+    await mkdir(join(raiz, 'docs'));
+    const { servico } = montar({ fontes: [raiz] });
+
+    await servico.criarFonte({ caminho: join(raiz, 'docs') });
+
+    await expect(
+      servico.criarFonte({ caminho: join(raiz, 'docs') }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('remove a fonte cadastrada e audita', async () => {
+    await mkdir(join(raiz, 'docs'));
+    const { servico, fontes, registrar } = montar({ fontes: [raiz] });
+
+    const fonte = await servico.criarFonte({ caminho: join(raiz, 'docs') });
+    await servico.removerFonte(fonte.id as string);
+
+    expect(fontes.dados).toHaveLength(0);
+    expect(registrar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ferramentas: [
+          expect.objectContaining({ nome: 'ambiente.fonte.remover' }),
+        ],
+      }),
+    );
+  });
+
+  it('recusa cadastrar fonte quando o ENV desliga o conhecimento', async () => {
+    await mkdir(join(raiz, 'docs'));
+    const { servico } = montar({ fontes: [raiz], conhecimento: false });
+
+    await expect(
+      servico.criarFonte({ caminho: join(raiz, 'docs') }),
+    ).rejects.toThrow(ForbiddenException);
   });
 });
