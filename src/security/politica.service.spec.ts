@@ -264,6 +264,31 @@ describe('PoliticaService', () => {
       expect(veredito.politica).toBe('fora_de_escopo');
     });
 
+    it('deixa descrever_schema passar sem sql, mas ainda exige aprovacao', () => {
+      const veredito = servico.avaliar(
+        pedido(
+          'consultar_banco',
+          { alvo: 'oraculo', operacao: 'descrever_schema' },
+          comLeitura,
+        ),
+      );
+
+      expect(veredito.decisao).toBe('exigir_aprovacao');
+      expect(veredito.politica).toBe('capacidade_sensivel');
+    });
+
+    it('descrever_schema nao escapa da allowlist de banco', () => {
+      const veredito = servico.avaliar(
+        pedido(
+          'consultar_banco',
+          { alvo: 'producao', operacao: 'descrever_schema' },
+          comLeitura,
+        ),
+      );
+
+      expect(veredito.politica).toBe('fora_de_escopo');
+    });
+
     it('bloqueia comando fora da allowlist de estado', () => {
       const veredito = servico.avaliar(
         pedido(

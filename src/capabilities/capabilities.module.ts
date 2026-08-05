@@ -8,6 +8,7 @@ import { SecurityModule } from '../security/security.module';
 import { CAPACIDADE, Capacidade } from './capacidade';
 import { BuscarConhecimentoCapacidade } from './conhecimento/buscar-conhecimento.capacidade';
 import { LerDocumentoCapacidade } from './conhecimento/ler-documento.capacidade';
+import { ConsultarBancoCapacidade, ExecutorConsulta } from './banco';
 import { BuscarCodigoCapacidade, LerArquivoCapacidade } from './codigo';
 import { DiagnosticoCapacidade, ExecutorDiagnostico } from './diagnostico';
 import { RegistryCapacidades } from './registry.service';
@@ -23,11 +24,13 @@ import { RegistryCapacidades } from './registry.service';
     RegistryCapacidades,
     EmbeddingService,
     ExecutorDiagnostico,
+    ExecutorConsulta,
     BuscarConhecimentoCapacidade,
     LerDocumentoCapacidade,
     BuscarCodigoCapacidade,
     LerArquivoCapacidade,
     DiagnosticoCapacidade,
+    ConsultarBancoCapacidade,
     {
       provide: CAPACIDADE,
       inject: [
@@ -36,6 +39,7 @@ import { RegistryCapacidades } from './registry.service';
         BuscarCodigoCapacidade,
         LerArquivoCapacidade,
         DiagnosticoCapacidade,
+        ConsultarBancoCapacidade,
       ],
       useFactory: (
         buscarConhecimento: BuscarConhecimentoCapacidade,
@@ -43,12 +47,14 @@ import { RegistryCapacidades } from './registry.service';
         buscarCodigo: BuscarCodigoCapacidade,
         lerArquivo: LerArquivoCapacidade,
         diagnostico: DiagnosticoCapacidade,
+        consultarBanco: ConsultarBancoCapacidade,
       ): Capacidade[] => [
         buscarConhecimento,
         lerDocumento,
         buscarCodigo,
         lerArquivo,
         diagnostico,
+        consultarBanco,
       ],
     },
   ],

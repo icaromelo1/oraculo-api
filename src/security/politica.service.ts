@@ -219,9 +219,10 @@ export class PoliticaService {
     argumentos: Record<string, unknown>,
     linha: CapacidadeDoPerfil,
   ): Veredito | null {
+    const semSql = argumentos.operacao === 'descrever_schema';
     const faltando =
       this.exigirTexto(pedido, argumentos, 'alvo') ??
-      this.exigirTexto(pedido, argumentos, 'sql');
+      (semSql ? null : this.exigirTexto(pedido, argumentos, 'sql'));
 
     if (faltando) {
       return faltando;
@@ -236,6 +237,10 @@ export class PoliticaService {
         'fora_de_escopo',
         `banco "${alvo}" nao esta na allowlist do perfil`,
       );
+    }
+
+    if (semSql) {
+      return null;
     }
 
     const sql = String(argumentos.sql);

@@ -317,6 +317,125 @@ chegou a rodar: `avaliarPedido` grava na hora um registro com `tom = bloqueio` (
 `aprovacao_exigida`), o motivo e os argumentos do pedido, sem depender de o turno terminar. Falha de
 gravação é logada e não derruba o fluxo: o bloqueio vale mesmo se a auditoria cair.
 
+## Capacidade `banco` (`src/capabilities/banco/`)
+
+`consultar_banco` é **somente leitura** e **sensível**: passa por `avaliarPedido` como qualquer
+ferramenta, e só existe se `CAP_BANCO=on` no `.env` **e** a capacidade estiver ligada no banco
+(`ConfiguracaoService`). Como sempre, o ENV é o teto e o banco é o recorte — o banco nunca amplia.
+
+Duas operações, uma ferramenta:
+
+| `operacao` | O que faz |
+|---|---|
+| `consultar` (padrão) | executa **um** `SELECT` (ou `WITH … SELECT`) no alvo, com `LIMIT` imposto |
+| `descrever_schema` | lista tabelas e colunas dos schemas liberados, opcionalmente de uma tabela só |
+
+`descrever_schema` existe para que o modelo **não precise adivinhar** nome de tabela e de coluna — é
+o que torna a capacidade utilizável sem tentativa e erro. A consulta que descreve o schema é montada
+pelo Oráculo (parâmetros `$1`/`$2`, nunca interpolação) e lê `information_schema`, que já respeita
+os privilégios do usuário conectado: o que o `GRANT` não alcança não aparece.
+
+### Operação: o usuário do banco é a defesa, a allowlist é a segunda linha
+
+> **Cada alvo em `alvo_banco` DEVE apontar para um usuário Postgres criado só com `GRANT SELECT`.**
+
+A allowlist de SQL descrita abaixo é boa, mas é software nosso, e software nosso pode ter buraco. O
+que não tem buraco é o servidor recusando escrita porque o papel não tem privilégio. Criar o usuário
+do alvo é parte de cadastrar o alvo, não um passo opcional:
+
+```sql
+CREATE ROLE oraculo_leitor LOGIN PASSWORD '<segredo>';
+GRANT CONNECT ON DATABASE <base> TO oraculo_leitor;
+GRANT USAGE ON SCHEMA <schema> TO oraculo_leitor;
+GRANT SELECT ON ALL TABLES IN SCHEMA <schema> TO oraculo_leitor;
+ALTER DEFAULT PRIVILEGES IN SCHEMA <schema> GRANT SELECT ON TABLES TO oraculo_leitor;
+```
+
+Nada de `GRANT ALL`, nada de reaproveitar o usuário da aplicação, nada de `SUPERUSER`. Medido contra
+o Postgres 17 local: com esse papel, um `UPDATE` que passasse pela allowlist morre no servidor com
+`permission denied for table …`. **Um alvo cadastrado com usuário de escrita não é protegido pelo
+Oráculo — é protegido apenas pela allowlist, e isso não é o desenho.**
+
+### As camadas, em ordem de quem realmente segura
+
+1. **`GRANT SELECT` no papel do Postgres** — a única defesa que não depende de código nosso;
+2. **transação `BEGIN TRANSACTION READ ONLY`** — cinto além do suspensório. Medido: mesmo conectado
+   com o dono do banco (todos os privilégios), `UPDATE` volta
+   `cannot execute UPDATE in a read-only transaction` e a linha continua intacta;
+3. **`EXPLAIN` antes de executar** — a consulta é planejada primeiro; se o `EXPLAIN` falha, a
+   consulta **não roda**. Também é o que derruba DDL/`COPY` que porventura escapasse do validador,
+   porque `EXPLAIN DROP …`/`EXPLAIN COPY …` é erro de sintaxe;
+4. **allowlist de SQL** (`sql-seguro.ts`), detalhada abaixo;
+5. **`statement_timeout` + `idle_in_transaction_session_timeout` de 8 s** e timeout de conexão de
+   5 s. Medido: `pg_sleep(30)` chamado direto no executor morre em `Query read timeout`;
+6. **`LIMIT` imposto** (teto 100). Sem `LIMIT`, o Oráculo acrescenta; com `LIMIT` maior, reduz;
+7. **mascaramento** das colunas de `colunasMascaradas` do alvo, por nome de coluna do resultado,
+   sem olhar a caixa;
+8. **`SanitizadorDiagnostico`** sobre toda a saída — dado de banco carrega e-mail, CPF, IP e token.
+
+### A allowlist de SQL não é regex sobre a string
+
+`sql-seguro.ts` **tokeniza** a consulta antes de julgar (literal de texto, identificador entre aspas,
+palavra, número, símbolo). É o que faz `'a--b'` continuar sendo um literal legítimo enquanto
+`SELECT 1 --\nDROP TABLE x` é recusado. O que reprova:
+
+- **comentário, em qualquer forma.** `--` e `/* */` são recusados de saída — não são apagados e
+  reanalisados. Isso mata de uma vez o payload escondido depois do `--` e o `/**/` no meio;
+- **`;` que não seja um único no fim.** `SELECT 1;` passa (o `;` é aparado); `SELECT 1; DROP TABLE x`
+  não;
+- **qualquer coisa que não comece com `SELECT` ou `WITH`.** `UPDATE`, `INSERT`, `DELETE`, `COPY`,
+  `DO`, `SET`, `RESET`, `GRANT`, `VACUUM`, `TABLE`, `VALUES` morrem aqui;
+- **palavra negada em qualquer posição** — é o que pega escrita escondida em CTE
+  (`WITH t AS (DELETE FROM x RETURNING *) SELECT * FROM t`) e `SELECT … INTO`. `FETCH` também está
+  negado, de propósito: sem `FETCH FIRST … ROWS ONLY`, `LIMIT` é o único jeito de paginar e a
+  imposição de teto fica completa;
+- **qualquer identificador com prefixo `pg_`** — cobre `pg_read_file`, `pg_ls_dir`, `pg_sleep`,
+  `pg_shadow`, `pg_authid`, `pg_terminate_backend` e o catálogo inteiro de uma vez, sem depender de
+  manter uma lista de nomes perigosos em dia;
+- **função fora da allowlist.** É allowlist, não denylist: toda palavra seguida de `(` precisa estar
+  na lista de funções conhecidas (agregação, texto, data, número, janela, json) ou ser palavra
+  estrutural do SQL. `dblink`, `lo_import`, `lo_export`, `query_to_xml`, `xpath`, `current_setting`,
+  `set_config`, `version` e qualquer função nova que apareça no Postgres caem por padrão. Função
+  qualificada por schema (`public.qualquer(…)`) também é recusada;
+- **caractere fora do conjunto permitido em posição de código.** `$` (dollar quoting e `$1`), `\`,
+  crase, `{}`, `#`, `&`, `^`, `~`, `?`, `@` e **qualquer não-ASCII** são recusados fora de literal —
+  é o que derruba `ＳＥＬＥＣＴ` em largura total. Dentro de `'…'` o acento passa normalmente, então
+  `WHERE nome = 'José'` funciona;
+- **literal com prefixo** (`E'…'`, `U&'…'`, `B'…'`, `X'…'`), porque abrem escape de barra invertida;
+- **`LIMIT` que não seja inteiro literal** — `LIMIT ALL`, `LIMIT (SELECT …)` e `LIMIT $1` são
+  recusados, para que a imposição de teto seja sempre possível;
+- **schema fora de `schemas` do alvo.** Referência qualificada depois de `FROM`/`JOIN` é conferida
+  contra a lista (com aspas duplas comparadas caso a caso, sem aspas comparadas em minúsculo);
+  qualificação de três níveis é recusada; e a sessão ainda roda com
+  `SET LOCAL search_path = <schemas do alvo>`, então nome sem qualificação também não escapa. Alvo
+  **sem nenhum schema declarado não consulta nada** — fecha, não abre;
+- **coluna mascarada nomeada na consulta.** Se o alvo mascara `senha`, então `SELECT senha AS x`,
+  `SELECT md5(senha)` e `WHERE senha = '…'` são recusados **antes de executar** — apelido e função
+  seriam saída de emergência do mascaramento por nome de coluna. Para ver a linha, o modelo usa
+  `SELECT *` e recebe `senha=[mascarado]`.
+
+A caixa nunca importa: `SeLeCt` passa, `Pg_SlEeP` não.
+
+O `plano` devolvido no evento `ferramenta.fim` é **o SQL exato que foi para o servidor**, já com o
+`LIMIT` aplicado — é isso que o humano aprova, não o que o modelo pediu.
+
+### O que continua sendo risco
+
+- **Alvo cadastrado com usuário que tem escrita.** O Oráculo não tem como conferir os privilégios do
+  papel no cadastro; se o operador apontar o alvo para o usuário da aplicação, some a camada 1 e
+  sobram a transação `READ ONLY` e a allowlist.
+- **Vazamento por outro nome.** O mascaramento é por nome de coluna. Se o mesmo dado existir numa
+  view com outro nome, num `jsonb` de payload, ou numa coluna espelho, ele sai.
+- **Oráculo de linha.** Mesmo sem ler a coluna mascarada, dá para inferir informação filtrando por
+  colunas não mascaradas. Isso é limite do modelo de ameaça, não bug.
+- **Palavra negada que também é nome de coluna plausível** (`set`, `copy`, `merge`, `call`, `lock`)
+  faz uma consulta legítima ser recusada. Falso positivo, escolhido de propósito no lugar do falso
+  negativo — a saída é citar a coluna entre aspas duplas.
+- **A allowlist de funções envelhece pelo lado de menos.** Função útil que falte só quebra consulta,
+  nunca abre buraco; mas ela precisa ser mantida à mão conforme o uso real aparecer.
+- **`EXPLAIN` avalia expressão constante** durante o planejamento. Como toda função chamável já
+  passou pela allowlist, o dano possível aí é o mesmo da consulta em si.
+
 ## Motor (`src/engine/`)
 
 `MotorOraculo.responder(pergunta, contexto)` devolve um `AsyncIterable<EventoOraculo>` — a
