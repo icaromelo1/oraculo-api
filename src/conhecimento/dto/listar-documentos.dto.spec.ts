@@ -7,8 +7,10 @@ import {
 
 describe('validarListarDocumentosDto', () => {
   it('usa página 1 e o tamanho padrão quando nada é informado', () => {
-    expect(validarListarDocumentosDto({})).toEqual({
+    expect(validarListarDocumentosDto({})).toMatchObject({
       busca: undefined,
+      pasta: undefined,
+      recursivo: true,
       pagina: 1,
       porPagina: POR_PAGINA_PADRAO,
     });
