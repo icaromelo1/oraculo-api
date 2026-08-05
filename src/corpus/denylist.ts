@@ -1,3 +1,10 @@
+const PADROES_DO_PROPRIO_ORACULO: readonly string[] = [
+  'oraculo-api',
+  'oraculo-ui',
+  'oraculo',
+  'project_oraculo_*',
+];
+
 function padraoParaRegex(padrao: string): RegExp {
   const escapado = padrao
     .split('*')
@@ -18,8 +25,14 @@ export function caminhoNegado(
   padroesNegados: readonly string[],
 ): boolean {
   const segmentos = caminhoRelativo.split(/[\\/]+/).filter(Boolean);
+  const padroes = [...PADROES_DO_PROPRIO_ORACULO, ...padroesNegados];
 
-  return segmentos.some((segmento) =>
-    casaAlgumPadrao(segmento, padroesNegados),
-  );
+  return segmentos.some((segmento) => casaAlgumPadrao(segmento, padroes));
+}
+
+export function ehDoProprioOraculo(caminho: string): boolean {
+  return caminho
+    .split(/[\\/]+/)
+    .filter(Boolean)
+    .some((segmento) => casaAlgumPadrao(segmento, PADROES_DO_PROPRIO_ORACULO));
 }
