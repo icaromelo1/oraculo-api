@@ -10,6 +10,7 @@ import {
 } from './parsing-utils';
 
 const SINAL_ENCERRAMENTO_FORCADO_MS = 5_000;
+const TENTATIVAS_POR_GERACAO = 3;
 
 export class AnalisadorEventosCli {
   private bufferizador = '';
@@ -228,6 +229,50 @@ export class CliProvider implements LlmProvider {
   constructor(private readonly config: OraculoConfig) {}
 
   async *gerar(pedido: PedidoGeracao): AsyncIterable<EventoProvedor> {
+    for (let tentativa = 1; tentativa <= TENTATIVAS_POR_GERACAO; tentativa++) {
+      const ultima = tentativa === TENTATIVAS_POR_GERACAO;
+      const retidos: EventoProvedor[] = [];
+      let fluindo = false;
+      let houveErro = false;
+
+      for await (const evento of this.gerarUmaVez(pedido)) {
+        if (fluindo) {
+          yield evento;
+
+          continue;
+        }
+
+        if (evento.tipo === 'erro') {
+          houveErro = true;
+        }
+
+        const temConteudo =
+          evento.tipo === 'texto' && evento.fragmento.trim() !== '';
+
+        if (temConteudo || houveErro || ultima) {
+          fluindo = true;
+
+          for (const retido of retidos) {
+            yield retido;
+          }
+
+          yield evento;
+
+          continue;
+        }
+
+        retidos.push(evento);
+      }
+
+      if (fluindo) {
+        return;
+      }
+    }
+  }
+
+  private async *gerarUmaVez(
+    pedido: PedidoGeracao,
+  ): AsyncIterable<EventoProvedor> {
     const { cliComando, cliTimeoutMs, cliDialeto, cliModelo, anthropicModelo } =
       this.config.provedor;
     const binario = extrairBinario(cliComando);
