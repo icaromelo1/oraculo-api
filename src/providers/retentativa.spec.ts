@@ -14,7 +14,11 @@ async function* comRetentativa(
 
     registro.tentativas = tentativa;
 
-    for (const evento of rodadas[Math.min(tentativa - 1, rodadas.length - 1)]) {
+    const rodada = rodadas[Math.min(tentativa - 1, rodadas.length - 1)];
+
+    for (const evento of rodada) {
+      await Promise.resolve();
+
       if (fluindo) {
         yield evento;
         continue;
