@@ -27,6 +27,10 @@ import {
   type RaizResolvida,
 } from '../capabilities/codigo/seguranca';
 import { casaAlgumPadrao } from '../corpus/denylist';
+import {
+  ErroDialetoInvalido,
+  interpretarDescritor,
+} from '../providers/dialeto';
 import { SecurityService } from '../security/security.service';
 import { CifraService, ResumoChave, ResumoConexao } from './cifra.service';
 import { OraculoConfig } from './config.service';
@@ -692,9 +696,17 @@ export class ConfiguracaoService implements OnModuleInit {
       return null;
     }
 
-    if (!DIALETOS.includes(informado)) {
+    if (DIALETOS.includes(informado)) {
+      return informado;
+    }
+
+    try {
+      interpretarDescritor(informado);
+    } catch (erro) {
       throw new BadRequestException(
-        `dialeto "${informado}" não existe — os conhecidos são ${DIALETOS.join(', ')}`,
+        erro instanceof ErroDialetoInvalido
+          ? erro.message
+          : `dialeto "${informado}" não é um preset conhecido (${DIALETOS.join(', ')}) nem um descritor JSON válido`,
       );
     }
 

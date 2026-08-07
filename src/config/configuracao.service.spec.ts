@@ -917,3 +917,67 @@ describe('ConfiguracaoService — provedor com endereço inseguro', () => {
     ).rejects.toThrow(/exige o comando/);
   });
 });
+
+describe('ConfiguracaoService — dialeto de CLI personalizado', () => {
+  const descritorValido = JSON.stringify({
+    id: 'meu-cli',
+    argumentos: ['-p', '{prompt}'],
+    formatoSaida: 'texto-puro',
+  });
+
+  it('aceita preset conhecido', async () => {
+    const { servico } = montar({ conhecimento: true });
+
+    const criado = await servico.criarProvedor({
+      nome: 'com-preset',
+      tipo: 'cli',
+      comando: '/usr/local/bin/agy',
+      dialeto: 'agy',
+    });
+
+    expect(criado.nome).toBe('com-preset');
+  });
+
+  it('aceita descritor JSON válido — sem isso o motor executaria algo que a api recusa gravar', async () => {
+    const { servico } = montar({ conhecimento: true });
+
+    const criado = await servico.criarProvedor({
+      nome: 'cli-proprio',
+      tipo: 'cli',
+      comando: '/usr/local/bin/meu-cli',
+      dialeto: descritorValido,
+    });
+
+    expect(criado.nome).toBe('cli-proprio');
+  });
+
+  it('recusa descritor JSON malformado com motivo legível', async () => {
+    const { servico } = montar({ conhecimento: true });
+
+    await expect(
+      servico.criarProvedor({
+        nome: 'quebrado',
+        tipo: 'cli',
+        comando: '/usr/local/bin/x',
+        dialeto: '{ isso nao e json',
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('recusa descritor sem marcador de prompt', async () => {
+    const { servico } = montar({ conhecimento: true });
+
+    await expect(
+      servico.criarProvedor({
+        nome: 'sem-prompt',
+        tipo: 'cli',
+        comando: '/usr/local/bin/x',
+        dialeto: JSON.stringify({
+          id: 'x',
+          argumentos: ['--foo'],
+          formatoSaida: 'texto-puro',
+        }),
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
