@@ -1,5 +1,5 @@
-import { AnalisadorEventosAgy, construirArgvAgy } from './agy.analisador';
-import { resolverDialeto } from './cli.provider';
+import { AnalisadorEventosAgy } from './agy.analisador';
+import { DESCRITOR_AGY, montarArgv, resolverDialeto } from './dialeto';
 import { PedidoGeracao } from './llm-provider';
 
 const pedido: PedidoGeracao = {
@@ -7,6 +7,17 @@ const pedido: PedidoGeracao = {
   mensagens: [{ papel: 'usuario', texto: 'oi' }],
   maxTokens: 100,
 };
+
+function argvAgy(modelo: string, timeoutMs: number, prompt: string): string[] {
+  return montarArgv(DESCRITOR_AGY, {
+    prompt,
+    promptComSistema: prompt,
+    sistema: pedido.sistema,
+    modelo,
+    modeloOuPadrao: modelo,
+    timeoutMs,
+  });
+}
 
 describe('AnalisadorEventosAgy', () => {
   it('emite texto do step_update de resposta do agente', () => {
@@ -110,14 +121,9 @@ describe('AnalisadorEventosAgy', () => {
   });
 });
 
-describe('construirArgvAgy', () => {
+describe('argumentos do dialeto agy', () => {
   it('monta os argumentos sem shell e com timeout em segundos', () => {
-    const argv = construirArgvAgy(
-      pedido,
-      'gemini-3.6-flash-low',
-      120_000,
-      'prompt',
-    );
+    const argv = argvAgy('gemini-3.6-flash-low', 120_000, 'prompt');
 
     expect(argv).toEqual([
       '-p',
@@ -133,21 +139,21 @@ describe('construirArgvAgy', () => {
   });
 
   it('omite o modelo quando não configurado', () => {
-    expect(construirArgvAgy(pedido, '', 60_000, 'prompt')).not.toContain(
-      '--model',
-    );
+    expect(argvAgy('', 60_000, 'prompt')).not.toContain('--model');
   });
 });
 
 describe('resolverDialeto', () => {
   it('detecta agy pelo binário quando está em auto', () => {
-    expect(resolverDialeto('auto', '/home/ubuntu/.local/bin/agy')).toBe('agy');
-    expect(resolverDialeto('auto', 'claude')).toBe('claude');
+    expect(
+      resolverDialeto('auto', '/home/ubuntu/.local/bin/agy').descritor.id,
+    ).toBe('agy');
+    expect(resolverDialeto('auto', 'claude').descritor.id).toBe('claude');
   });
 
   it('respeita o dialeto explícito', () => {
-    expect(resolverDialeto('claude', 'agy')).toBe('claude');
-    expect(resolverDialeto('agy', 'claude')).toBe('agy');
+    expect(resolverDialeto('claude', 'agy').descritor.id).toBe('claude');
+    expect(resolverDialeto('agy', 'claude').descritor.id).toBe('agy');
   });
 });
 

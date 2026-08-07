@@ -1,4 +1,4 @@
-import { EventoProvedor, PedidoGeracao } from './llm-provider';
+import { EventoProvedor } from './llm-provider';
 import {
   analisarJsonSeguro,
   ehObjeto,
@@ -99,27 +99,4 @@ export class AnalisadorEventosAgy {
       },
     ];
   }
-}
-
-export function construirArgvAgy(
-  pedido: PedidoGeracao,
-  modelo: string,
-  timeoutMs: number,
-  prompt: string,
-): string[] {
-  const argv = [
-    '-p',
-    prompt,
-    '--output-format',
-    'stream-json',
-    '--disable-slash-commands',
-    '--print-timeout',
-    `${Math.ceil(timeoutMs / 1000)}s`,
-  ];
-
-  if (modelo) {
-    argv.push('--model', modelo);
-  }
-
-  return argv;
 }

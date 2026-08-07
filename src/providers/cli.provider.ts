@@ -1,5 +1,11 @@
 import { spawn } from 'node:child_process';
-import { AnalisadorEventosAgy, construirArgvAgy } from './agy.analisador';
+import { AnalisadorEventosAgy } from './agy.analisador';
+import {
+  AnalisadorGenerico,
+  DialetoResolvido,
+  montarArgv,
+  resolverDialeto,
+} from './dialeto';
 import { EventoProvedor, LlmProvider, PedidoGeracao } from './llm-provider';
 import type { ConfigDoProvedor } from './provider.factory';
 import {
@@ -190,37 +196,19 @@ function construirPromptComSistema(pedido: PedidoGeracao): string {
   return `${pedido.sistema}\n\n${construirPrompt(pedido)}`;
 }
 
-export function resolverDialeto(
-  dialetoConfigurado: 'auto' | 'claude' | 'agy',
-  binario: string,
-): 'claude' | 'agy' {
-  if (dialetoConfigurado !== 'auto') {
-    return dialetoConfigurado;
-  }
-  return binario.split('/').pop() === 'agy' ? 'agy' : 'claude';
+interface AnalisadorDeSaida {
+  processarChunk(chunk: string): EventoProvedor[];
+  finalizar?(): EventoProvedor[];
 }
 
-function construirArgv(pedido: PedidoGeracao, modelo: string): string[] {
-  return [
-    '-p',
-    construirPrompt(pedido),
-    '--output-format',
-    'stream-json',
-    '--verbose',
-    '--include-partial-messages',
-    '--strict-mcp-config',
-    '--mcp-config',
-    JSON.stringify({ mcpServers: {} }),
-    '--model',
-    modelo,
-    '--tools',
-    'NenhumaFerramentaNativa',
-    '--allowedTools',
-    'FerramentaInexistente',
-    '--exclude-dynamic-system-prompt-sections',
-    '--system-prompt',
-    pedido.sistema,
-  ];
+function criarAnalisador(dialeto: DialetoResolvido): AnalisadorDeSaida {
+  if (dialeto.origem === 'preset') {
+    return dialeto.preset === 'agy'
+      ? new AnalisadorEventosAgy()
+      : new AnalisadorEventosCli();
+  }
+
+  return new AnalisadorGenerico(dialeto.descritor);
 }
 
 export class CliProvider implements LlmProvider {
@@ -276,23 +264,36 @@ export class CliProvider implements LlmProvider {
     const { cliComando, cliTimeoutMs, cliDialeto, cliModelo, anthropicModelo } =
       this.config;
     const binario = extrairBinario(cliComando);
-    const dialeto = resolverDialeto(cliDialeto, binario);
 
-    const argv =
-      dialeto === 'agy'
-        ? construirArgvAgy(
-            pedido,
-            cliModelo ?? '',
-            cliTimeoutMs,
-            construirPromptComSistema(pedido),
-          )
-        : construirArgv(pedido, cliModelo ?? anthropicModelo);
+    let dialeto: DialetoResolvido;
+
+    try {
+      dialeto = resolverDialeto(cliDialeto, binario);
+    } catch (erro) {
+      yield {
+        tipo: 'erro',
+        codigo: 'dialeto_invalido',
+        mensagem:
+          erro instanceof Error
+            ? erro.message
+            : 'o dialeto configurado para o provedor CLI não pôde ser lido',
+        retomavel: false,
+      };
+
+      return;
+    }
+
+    const argv = montarArgv(dialeto.descritor, {
+      prompt: construirPrompt(pedido),
+      promptComSistema: construirPromptComSistema(pedido),
+      sistema: pedido.sistema,
+      modelo: cliModelo ?? '',
+      modeloOuPadrao: cliModelo ?? anthropicModelo,
+      timeoutMs: cliTimeoutMs,
+    });
 
     const fila = new FilaAssincrona<EventoProvedor>();
-    const analisador =
-      dialeto === 'agy'
-        ? new AnalisadorEventosAgy()
-        : new AnalisadorEventosCli();
+    const analisador = criarAnalisador(dialeto);
     let stderrTexto = '';
     let expirou = false;
 
@@ -348,6 +349,10 @@ export class CliProvider implements LlmProvider {
             stderrTexto.trim() || `Processo CLI terminou com código ${codigo}`,
           retomavel: true,
         });
+      } else if (analisador.finalizar) {
+        for (const evento of analisador.finalizar()) {
+          fila.empurrar(evento);
+        }
       }
       fila.encerrar();
     });
