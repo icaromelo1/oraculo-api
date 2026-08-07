@@ -14,6 +14,19 @@ import {
 import { LIMITE_PADRAO, LIMITE_TETO, normalizarLimite } from './limite';
 import { fundirComRrf, ItemFundivel } from './rrf';
 
+export const TETO_DE_TRECHO_CHARS = 1_800;
+
+export function encurtarTrecho(texto: string): string {
+  if (texto.length <= TETO_DE_TRECHO_CHARS) {
+    return texto;
+  }
+
+  const corte = texto.lastIndexOf('\n', TETO_DE_TRECHO_CHARS);
+  const fim = corte > TETO_DE_TRECHO_CHARS / 2 ? corte : TETO_DE_TRECHO_CHARS;
+
+  return `${texto.slice(0, fim).trimEnd()}\n[trecho cortado — abra o documento para ver o restante]`;
+}
+
 const FATOR_POOL = 5;
 const POOL_MINIMO = 20;
 
@@ -176,7 +189,7 @@ export class BuscarConhecimentoCapacidade implements Capacidade {
         titulo: item.titulo,
         meta: `linhas ${item.linhaInicio}-${item.linhaFim}`,
       },
-      conteudo: item.texto,
+      conteudo: encurtarTrecho(item.texto),
     };
   }
 }

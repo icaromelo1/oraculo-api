@@ -8,7 +8,9 @@ describe('presets de provedor — catálogo', () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids[0]).toBe('groq');
     expect(ids[ids.length - 1]).toBe('manual');
-    expect(ids).toEqual(expect.arrayContaining(['deepseek', 'openrouter', 'ollama', 'xai']));
+    expect(ids).toEqual(
+      expect.arrayContaining(['deepseek', 'openrouter', 'ollama', 'xai']),
+    );
   });
 
   it('todo preset que exige chave diz onde obtê-la', () => {

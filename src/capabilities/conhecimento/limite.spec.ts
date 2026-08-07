@@ -1,3 +1,7 @@
+import {
+  encurtarTrecho,
+  TETO_DE_TRECHO_CHARS,
+} from './buscar-conhecimento.capacidade';
 import { LIMITE_PADRAO, LIMITE_TETO, normalizarLimite } from './limite';
 
 describe('normalizarLimite', () => {
@@ -32,5 +36,29 @@ describe('normalizarLimite', () => {
 
   it('trunca fração para inteiro', () => {
     expect(normalizarLimite(4.9)).toBe(4);
+  });
+});
+
+describe('teto de tamanho do trecho devolvido ao modelo', () => {
+  it('não mexe em trecho dentro do teto', () => {
+    const curto = 'linha um\nlinha dois';
+
+    expect(encurtarTrecho(curto)).toBe(curto);
+  });
+
+  it('corta trecho gigante e avisa que foi cortado', () => {
+    const gigante = 'a'.repeat(50_000);
+    const saida = encurtarTrecho(gigante);
+
+    expect(saida.length).toBeLessThan(TETO_DE_TRECHO_CHARS + 100);
+    expect(saida).toContain('trecho cortado');
+  });
+
+  it('prefere cortar na quebra de linha para não partir no meio da palavra', () => {
+    const texto = 'x'.repeat(1_500) + '\n' + 'y'.repeat(1_000);
+    const saida = encurtarTrecho(texto);
+
+    expect(saida.startsWith('x'.repeat(1_500))).toBe(true);
+    expect(saida).not.toContain('y');
   });
 });
