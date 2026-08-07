@@ -9,6 +9,8 @@ export interface PresetDeProvedor {
   cabecalhos: Record<string, string>;
   modelosSugeridos: string[];
   observacao: string | null;
+  ondeObterChave: string | null;
+  gratuito: boolean;
 }
 
 export interface CadastroDeProvedor {
@@ -31,7 +33,9 @@ export const PRESETS_DE_PROVEDOR: readonly PresetDeProvedor[] = [
     exigeChave: true,
     cabecalhos: {},
     modelosSugeridos: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
-    observacao: 'camada gratuita',
+    observacao: 'tem camada gratuita — bom lugar para começar',
+    ondeObterChave: 'https://console.groq.com/keys',
+    gratuito: true,
   },
   {
     id: 'deepseek',
@@ -41,7 +45,9 @@ export const PRESETS_DE_PROVEDOR: readonly PresetDeProvedor[] = [
     exigeChave: true,
     cabecalhos: {},
     modelosSugeridos: ['deepseek-chat', 'deepseek-reasoner'],
-    observacao: null,
+    observacao: 'muito barato por token, forte em seguir instrução',
+    ondeObterChave: 'https://platform.deepseek.com/api_keys',
+    gratuito: false,
   },
   {
     id: 'openrouter',
@@ -57,7 +63,10 @@ export const PRESETS_DE_PROVEDOR: readonly PresetDeProvedor[] = [
       'deepseek/deepseek-chat',
       'meta-llama/llama-3.3-70b-instruct',
     ],
-    observacao: 'pede HTTP-Referer e X-Title',
+    observacao:
+      'uma chave só, dezenas de modelos — troque o modelo sem trocar credencial',
+    ondeObterChave: 'https://openrouter.ai/keys',
+    gratuito: false,
   },
   {
     id: 'ollama',
@@ -67,7 +76,70 @@ export const PRESETS_DE_PROVEDOR: readonly PresetDeProvedor[] = [
     exigeChave: false,
     cabecalhos: {},
     modelosSugeridos: ['llama3.2', 'qwen2.5-coder'],
-    observacao: 'sem chave',
+    observacao:
+      'roda na própria máquina, sem chave e sem custo — mas exige CPU/GPU local',
+    ondeObterChave: null,
+    gratuito: true,
+  },
+  {
+    id: 'xai',
+    rotulo: 'xAI (Grok)',
+    tipo: TipoProvedorModelo.OPENAI_COMPAT,
+    baseUrl: 'https://api.x.ai/v1',
+    exigeChave: true,
+    cabecalhos: {},
+    modelosSugeridos: ['grok-4', 'grok-3-mini'],
+    observacao: 'os modelos Grok, da xAI — não confundir com Groq',
+    ondeObterChave: 'https://console.x.ai',
+    gratuito: false,
+  },
+  {
+    id: 'openai',
+    rotulo: 'OpenAI',
+    tipo: TipoProvedorModelo.OPENAI_COMPAT,
+    baseUrl: 'https://api.openai.com/v1',
+    exigeChave: true,
+    cabecalhos: {},
+    modelosSugeridos: ['gpt-5', 'gpt-5-mini'],
+    observacao: null,
+    ondeObterChave: 'https://platform.openai.com/api-keys',
+    gratuito: false,
+  },
+  {
+    id: 'mistral',
+    rotulo: 'Mistral',
+    tipo: TipoProvedorModelo.OPENAI_COMPAT,
+    baseUrl: 'https://api.mistral.ai/v1',
+    exigeChave: true,
+    cabecalhos: {},
+    modelosSugeridos: ['mistral-large-latest', 'mistral-small-latest'],
+    observacao: null,
+    ondeObterChave: 'https://console.mistral.ai/api-keys',
+    gratuito: false,
+  },
+  {
+    id: 'together',
+    rotulo: 'Together AI',
+    tipo: TipoProvedorModelo.OPENAI_COMPAT,
+    baseUrl: 'https://api.together.xyz/v1',
+    exigeChave: true,
+    cabecalhos: {},
+    modelosSugeridos: ['meta-llama/Llama-3.3-70B-Instruct-Turbo'],
+    observacao: 'catálogo grande de modelos abertos',
+    ondeObterChave: 'https://api.together.xyz/settings/api-keys',
+    gratuito: false,
+  },
+  {
+    id: 'anthropic',
+    rotulo: 'Anthropic (Claude)',
+    tipo: TipoProvedorModelo.ANTHROPIC,
+    baseUrl: null,
+    exigeChave: true,
+    cabecalhos: {},
+    modelosSugeridos: ['claude-haiku-4-5-20251001'],
+    observacao: 'usa a API própria da Anthropic, não o formato da OpenAI',
+    ondeObterChave: 'https://console.anthropic.com/settings/keys',
+    gratuito: false,
   },
   {
     id: 'manual',
@@ -77,7 +149,9 @@ export const PRESETS_DE_PROVEDOR: readonly PresetDeProvedor[] = [
     exigeChave: false,
     cabecalhos: {},
     modelosSugeridos: [],
-    observacao: 'o usuário informa tudo',
+    observacao: 'qualquer endpoint compatível com a API da OpenAI',
+    ondeObterChave: null,
+    gratuito: false,
   },
 ];
 

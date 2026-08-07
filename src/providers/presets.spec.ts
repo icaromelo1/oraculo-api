@@ -2,11 +2,29 @@ import { TipoProvedorModelo } from '../database/entities';
 import { PRESETS_DE_PROVEDOR, aplicarPreset, buscarPreset } from './presets';
 
 describe('presets de provedor — catálogo', () => {
-  it('tem os cinco presets previstos, com id único', () => {
+  it('tem id único e mantém groq como primeiro e manual como último', () => {
     const ids = PRESETS_DE_PROVEDOR.map((preset) => preset.id);
 
-    expect(ids).toEqual(['groq', 'deepseek', 'openrouter', 'ollama', 'manual']);
     expect(new Set(ids).size).toBe(ids.length);
+    expect(ids[0]).toBe('groq');
+    expect(ids[ids.length - 1]).toBe('manual');
+    expect(ids).toEqual(expect.arrayContaining(['deepseek', 'openrouter', 'ollama', 'xai']));
+  });
+
+  it('todo preset que exige chave diz onde obtê-la', () => {
+    for (const preset of PRESETS_DE_PROVEDOR) {
+      if (!preset.exigeChave) continue;
+
+      expect(preset.ondeObterChave).toMatch(/^https:\/\//);
+    }
+  });
+
+  it('todo preset http declara baseUrl, menos o manual', () => {
+    for (const preset of PRESETS_DE_PROVEDOR) {
+      if (preset.id === 'manual' || preset.tipo === 'anthropic') continue;
+
+      expect(preset.baseUrl).toMatch(/^https?:\/\//);
+    }
   });
 
   it('declara baseUrl, chave e modelos sugeridos de cada fornecedor', () => {
