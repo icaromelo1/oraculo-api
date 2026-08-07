@@ -635,20 +635,28 @@ export class ConfiguracaoService implements OnModuleInit {
       return null;
     }
 
+    return this.descreverProvedor(ativo);
+  }
+
+  private descreverProvedor(provedor: ProvedorModelo): ProvedorAtivo {
     return {
-      id: ativo.id,
-      nome: ativo.nome,
-      tipo: ativo.tipo,
-      baseUrl: ativo.baseUrl,
-      modelo: ativo.modelo,
-      chave: ativo.chaveCifrada
-        ? this.cifra.decifrar(ativo.chaveCifrada)
+      id: provedor.id,
+      nome: provedor.nome,
+      tipo: provedor.tipo,
+      baseUrl: provedor.baseUrl,
+      modelo: provedor.modelo,
+      chave: provedor.chaveCifrada
+        ? this.cifra.decifrar(provedor.chaveCifrada)
         : null,
-      cabecalhosExtras: ativo.cabecalhosExtras,
-      parametros: ativo.parametros,
-      comando: ativo.comando,
-      dialeto: ativo.dialeto,
+      cabecalhosExtras: provedor.cabecalhosExtras,
+      parametros: provedor.parametros,
+      comando: provedor.comando,
+      dialeto: provedor.dialeto,
     };
+  }
+
+  tipoDeProvedorPermitido(tipo: string): boolean {
+    return this.tipoPermitido(tipo as TipoProvedorModelo);
   }
 
   private tipoPermitido(tipo: TipoProvedorModelo): boolean {
