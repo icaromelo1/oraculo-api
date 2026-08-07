@@ -9,6 +9,7 @@ import { FonteConhecimento } from './fonte-conhecimento.entity';
 import { Mensagem } from './mensagem.entity';
 import { Perfil } from './perfil.entity';
 import { PerfilCapacidade } from './perfil-capacidade.entity';
+import { ProvedorModelo } from './provedor-modelo.entity';
 import { ServicoObservavel } from './servico-observavel.entity';
 import { Trecho } from './trecho.entity';
 import { Usuario } from './usuario.entity';
@@ -33,6 +34,7 @@ export {
   PerfilCapacidade,
   StatusPerfilCapacidade,
 } from './perfil-capacidade.entity';
+export { ProvedorModelo, TipoProvedorModelo } from './provedor-modelo.entity';
 export { ServicoObservavel } from './servico-observavel.entity';
 export { Trecho } from './trecho.entity';
 export { Usuario } from './usuario.entity';
@@ -52,4 +54,5 @@ export const entidades = [
   FonteConhecimento,
   AlvoBanco,
   ServicoObservavel,
+  ProvedorModelo,
 ];

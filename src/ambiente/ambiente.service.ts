@@ -9,6 +9,7 @@ import {
   CapacidadeEfetiva,
   ConfiguracaoService,
   FonteEfetiva,
+  ProvedorResumido,
   ServicoResumido,
 } from '../config/configuracao.service';
 import {
@@ -49,6 +50,7 @@ export interface EstadoDoAmbiente {
   provedor: {
     tipo: string;
     modelo: string;
+    origem: 'env' | 'banco';
   };
   ultimaIndexacao: Date | null;
 }
@@ -63,15 +65,23 @@ export class AmbienteService {
   ) {}
 
   async estado(): Promise<EstadoDoAmbiente> {
-    const [capacidades, fontes, alvosBanco, servicos, porFonte, ultimo] =
-      await Promise.all([
-        this.configuracao.capacidadesEfetivas(),
-        this.configuracao.fontesEfetivas(),
-        this.configuracao.alvosBanco(),
-        this.configuracao.servicosObservaveis(),
-        this.contarCorpus(),
-        this.ultimoDocumento(),
-      ]);
+    const [
+      capacidades,
+      fontes,
+      alvosBanco,
+      servicos,
+      provedores,
+      porFonte,
+      ultimo,
+    ] = await Promise.all([
+      this.configuracao.capacidadesEfetivas(),
+      this.configuracao.fontesEfetivas(),
+      this.configuracao.alvosBanco(),
+      this.configuracao.servicosObservaveis(),
+      this.configuracao.provedores(),
+      this.contarCorpus(),
+      this.ultimoDocumento(),
+    ]);
 
     return {
       capacidades,
@@ -82,7 +92,7 @@ export class AmbienteService {
         total: porFonte.reduce((soma, item) => soma + item.documentos, 0),
         porFonte,
       },
-      provedor: this.provedor(),
+      provedor: this.provedor(provedores.find((item) => item.ativo)),
       ultimaIndexacao: ultimo?.atualizadoEm ?? null,
     };
   }
@@ -139,7 +149,23 @@ export class AmbienteService {
     };
   }
 
-  private provedor(): { tipo: string; modelo: string } {
+  private provedor(ativo?: ProvedorResumido): {
+    tipo: string;
+    modelo: string;
+    origem: 'env' | 'banco';
+  } {
+    if (ativo) {
+      return {
+        tipo: ativo.tipo,
+        modelo: ativo.modelo ?? ativo.comando ?? '(não definido)',
+        origem: 'banco',
+      };
+    }
+
+    return { ...this.provedorDoEnv(), origem: 'env' };
+  }
+
+  private provedorDoEnv(): { tipo: string; modelo: string } {
     const provedor = this.config.provedor;
 
     if (provedor.tipo === 'anthropic') {

@@ -20,6 +20,23 @@ export interface ResumoConexao {
   usuario: string;
 }
 
+export interface ResumoChave {
+  definida: boolean;
+  dica: string | null;
+}
+
+const TAMANHO_MINIMO_PARA_DICA = 12;
+const CHAVE_AUSENTE: ResumoChave = { definida: false, dica: null };
+const CHAVE_OPACA: ResumoChave = { definida: true, dica: '••••' };
+
+export function resumirChave(chave: string): ResumoChave {
+  if (chave.length < TAMANHO_MINIMO_PARA_DICA) {
+    return CHAVE_OPACA;
+  }
+
+  return { definida: true, dica: `••••${chave.slice(-4)}` };
+}
+
 const HOST_DESCONHECIDO = '(host indisponível)';
 
 export function mascararHost(host: string): string {
@@ -116,6 +133,18 @@ export class CifraService {
         base: '(sem base)',
         usuario: '(sem usuário)',
       };
+    }
+  }
+
+  resumirSegredo(guardado: string | null): ResumoChave {
+    if (!guardado) {
+      return CHAVE_AUSENTE;
+    }
+
+    try {
+      return resumirChave(this.decifrar(guardado));
+    } catch {
+      return CHAVE_OPACA;
     }
   }
 

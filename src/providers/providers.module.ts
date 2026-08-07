@@ -1,18 +1,15 @@
 import { Module } from '@nestjs/common';
 import { OraculoConfigModule } from '../config/config.module';
-import { OraculoConfig } from '../config/config.service';
+import { ConfiguracaoModule } from '../config/configuracao.module';
 import { LLM_PROVIDER } from './llm-provider';
-import { criarLlmProvider } from './provider.factory';
+import { ResolvedorDeProvedor } from './resolvedor';
 
 @Module({
-  imports: [OraculoConfigModule],
+  imports: [OraculoConfigModule, ConfiguracaoModule],
   providers: [
-    {
-      provide: LLM_PROVIDER,
-      inject: [OraculoConfig],
-      useFactory: (config: OraculoConfig) => criarLlmProvider(config),
-    },
+    ResolvedorDeProvedor,
+    { provide: LLM_PROVIDER, useExisting: ResolvedorDeProvedor },
   ],
-  exports: [LLM_PROVIDER],
+  exports: [LLM_PROVIDER, ResolvedorDeProvedor],
 })
 export class ProvidersModule {}

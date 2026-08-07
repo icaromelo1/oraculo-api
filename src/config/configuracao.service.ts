@@ -16,17 +16,21 @@ import {
   CapacidadeInstalacao,
   FonteConhecimento,
   NomeCapacidadeInstalacao,
+  ProvedorModelo,
   ServicoObservavel,
+  TipoProvedorModelo,
   Usuario,
 } from '../database/entities';
+import { validarEnderecoDeProvedor } from '../providers/endereco-seguro';
 import {
   raizesComConteudo,
   type RaizResolvida,
 } from '../capabilities/codigo/seguranca';
 import { casaAlgumPadrao } from '../corpus/denylist';
 import { SecurityService } from '../security/security.service';
-import { CifraService, ResumoConexao } from './cifra.service';
+import { CifraService, ResumoChave, ResumoConexao } from './cifra.service';
 import { OraculoConfig } from './config.service';
+import { TIPOS_DE_PROVEDOR } from './env.schema';
 import {
   CaminhoNaRaiz,
   raizesPermitidas,
@@ -41,6 +45,8 @@ const CAPACIDADES: NomeCapacidade[] = [
   'estado',
   'banco',
 ];
+
+const DIALETOS = ['auto', 'claude', 'agy'];
 
 const VARIAVEL_DO_ENV: Record<NomeCapacidade, string> = {
   conhecimento: 'CAP_CONHECIMENTO',
@@ -100,11 +106,54 @@ export interface NovaFonte {
   rotulo?: string;
 }
 
+export interface ProvedorResumido {
+  id: string;
+  nome: string;
+  tipo: TipoProvedorModelo;
+  baseUrl: string | null;
+  modelo: string | null;
+  comando: string | null;
+  dialeto: string | null;
+  cabecalhosExtras: string[];
+  parametros: Record<string, unknown> | null;
+  ativo: boolean;
+  criadoEm: Date;
+  chave: ResumoChave;
+  permitidoPeloEnv: boolean;
+  motivoIndisponivel?: string;
+}
+
+export interface ProvedorAtivo {
+  id: string;
+  nome: string;
+  tipo: TipoProvedorModelo;
+  baseUrl: string | null;
+  modelo: string | null;
+  chave: string | null;
+  cabecalhosExtras: Record<string, string> | null;
+  parametros: Record<string, unknown> | null;
+  comando: string | null;
+  dialeto: string | null;
+}
+
+export interface NovoProvedor {
+  nome: string;
+  tipo: string;
+  baseUrl?: string;
+  modelo?: string;
+  chave?: string;
+  cabecalhosExtras?: Record<string, string>;
+  parametros?: Record<string, unknown>;
+  comando?: string;
+  dialeto?: string;
+}
+
 interface Instantaneo {
   capacidades: CapacidadeEfetiva[];
   fontes: FonteEfetiva[];
   alvos: AlvoBanco[];
   servicos: ServicoObservavel[];
+  provedores: ProvedorModelo[];
 }
 
 @Injectable()
@@ -127,6 +176,8 @@ export class ConfiguracaoService implements OnModuleInit {
     private readonly alvos: Repository<AlvoBanco>,
     @InjectRepository(ServicoObservavel)
     private readonly servicos: Repository<ServicoObservavel>,
+    @InjectRepository(ProvedorModelo)
+    private readonly modelos: Repository<ProvedorModelo>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -430,6 +481,283 @@ export class ConfiguracaoService implements OnModuleInit {
     );
   }
 
+  async provedores(): Promise<ProvedorResumido[]> {
+    return (await this.estado()).provedores
+      .slice()
+      .sort((um, outro) => um.nome.localeCompare(outro.nome))
+      .map((provedor) => this.resumirProvedor(provedor));
+  }
+
+  async provedorAtivo(): Promise<ProvedorAtivo | null> {
+    return this.escolherAtivo((await this.estado()).provedores);
+  }
+
+  provedorAtivoSincrono(): ProvedorAtivo | null {
+    if (!this.instantaneo) {
+      return null;
+    }
+
+    return this.escolherAtivo(this.instantaneo.provedores);
+  }
+
+  async criarProvedor(
+    novo: NovoProvedor,
+    usuarioId?: string | null,
+  ): Promise<ProvedorResumido> {
+    const tipo = this.exigirTipoPermitido(novo.tipo);
+    const nome = novo.nome.trim();
+
+    if (!nome) {
+      throw new BadRequestException('o provedor precisa de um nome');
+    }
+
+    const jaExiste = await this.modelos.findOne({ where: { nome } });
+
+    if (jaExiste) {
+      throw new ConflictException(`já existe um provedor chamado "${nome}"`);
+    }
+
+    const baseUrl = this.validarBaseUrl(novo.baseUrl);
+    const modelo = novo.modelo?.trim() || null;
+    const comando = novo.comando?.trim() || null;
+    const dialeto = this.validarDialeto(novo.dialeto);
+
+    this.exigirCamposDoTipo(tipo, {
+      baseUrl,
+      modelo,
+      comando,
+      chave: novo.chave,
+    });
+
+    const salvo = await this.modelos.save(
+      this.modelos.create({
+        nome,
+        tipo,
+        baseUrl,
+        modelo,
+        comando,
+        dialeto,
+        chaveCifrada: novo.chave ? this.cifra.cifrar(novo.chave) : null,
+        cabecalhosExtras: novo.cabecalhosExtras ?? null,
+        parametros: novo.parametros ?? null,
+        ativo: false,
+        criadoPor: this.referenciaUsuario(usuarioId),
+      }),
+    );
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.provedor.criar',
+      { nome: salvo.nome, tipo: salvo.tipo, modelo: salvo.modelo, baseUrl },
+      `provedor de modelo "${salvo.nome}" (${salvo.tipo}) cadastrado, inativo (antes: inexistente)`,
+    );
+
+    return this.resumirProvedor(salvo);
+  }
+
+  async ativarProvedor(
+    id: string,
+    usuarioId?: string | null,
+  ): Promise<ProvedorResumido> {
+    const alvo = await this.modelos.findOne({ where: { id } });
+
+    if (!alvo) {
+      throw new NotFoundException(`provedor de modelo "${id}" não existe`);
+    }
+
+    this.exigirTipoPermitido(alvo.tipo);
+
+    const anterior = (await this.estado()).provedores.find(
+      (provedor) => provedor.ativo,
+    );
+
+    await this.modelos.manager.transaction(async (gerenciador) => {
+      await gerenciador.update(
+        ProvedorModelo,
+        { ativo: true },
+        { ativo: false },
+      );
+      await gerenciador.update(ProvedorModelo, { id }, { ativo: true });
+    });
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.provedor.ativar',
+      { id, nome: alvo.nome, tipo: alvo.tipo },
+      `provedor de modelo ativo passou de ${
+        anterior ? `"${anterior.nome}"` : 'o do .env'
+      } para "${alvo.nome}" (${alvo.tipo})`,
+    );
+
+    const atual = (await this.estado()).provedores.find(
+      (provedor) => provedor.id === id,
+    );
+
+    return this.resumirProvedor(atual ?? { ...alvo, ativo: true });
+  }
+
+  async removerProvedor(id: string, usuarioId?: string | null): Promise<void> {
+    const existente = await this.modelos.findOne({ where: { id } });
+
+    if (!existente) {
+      throw new NotFoundException(`provedor de modelo "${id}" não existe`);
+    }
+
+    await this.modelos.delete({ id });
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.provedor.remover',
+      { id, nome: existente.nome, tipo: existente.tipo },
+      `provedor de modelo "${existente.nome}" removido (antes: ${
+        existente.ativo ? 'ativo' : 'inativo'
+      })`,
+    );
+  }
+
+  private escolherAtivo(provedores: ProvedorModelo[]): ProvedorAtivo | null {
+    const ativo = provedores
+      .slice()
+      .sort((um, outro) => um.nome.localeCompare(outro.nome))
+      .find((provedor) => provedor.ativo && this.tipoPermitido(provedor.tipo));
+
+    if (!ativo) {
+      return null;
+    }
+
+    return {
+      id: ativo.id,
+      nome: ativo.nome,
+      tipo: ativo.tipo,
+      baseUrl: ativo.baseUrl,
+      modelo: ativo.modelo,
+      chave: ativo.chaveCifrada
+        ? this.cifra.decifrar(ativo.chaveCifrada)
+        : null,
+      cabecalhosExtras: ativo.cabecalhosExtras,
+      parametros: ativo.parametros,
+      comando: ativo.comando,
+      dialeto: ativo.dialeto,
+    };
+  }
+
+  private tipoPermitido(tipo: TipoProvedorModelo): boolean {
+    return this.config.provedoresPermitidos.includes(tipo);
+  }
+
+  private exigirTipoPermitido(bruto: string): TipoProvedorModelo {
+    const tipo = String(bruto).trim() as TipoProvedorModelo;
+
+    if (!TIPOS_DE_PROVEDOR.includes(tipo)) {
+      throw new BadRequestException(
+        `tipo de provedor "${bruto}" não existe — os conhecidos são ${TIPOS_DE_PROVEDOR.join(', ')}`,
+      );
+    }
+
+    if (!this.tipoPermitido(tipo)) {
+      throw new ForbiddenException(
+        `o provedor do tipo "${tipo}" está fora de PROVEDORES_PERMITIDOS no .env desta instalação — o banco só recorta dentro do que o .env permite, nunca amplia`,
+      );
+    }
+
+    return tipo;
+  }
+
+  private validarBaseUrl(bruto?: string): string | null {
+    const informado = bruto?.trim();
+
+    if (!informado) {
+      return null;
+    }
+
+    const veredicto = validarEnderecoDeProvedor(informado);
+
+    if (!veredicto.aprovado) {
+      throw new BadRequestException(veredicto.motivo);
+    }
+
+    return veredicto.url;
+  }
+
+  private validarDialeto(bruto?: string): string | null {
+    const informado = bruto?.trim();
+
+    if (!informado) {
+      return null;
+    }
+
+    if (!DIALETOS.includes(informado)) {
+      throw new BadRequestException(
+        `dialeto "${informado}" não existe — os conhecidos são ${DIALETOS.join(', ')}`,
+      );
+    }
+
+    return informado;
+  }
+
+  private exigirCamposDoTipo(
+    tipo: TipoProvedorModelo,
+    campos: {
+      baseUrl: string | null;
+      modelo: string | null;
+      comando: string | null;
+      chave?: string;
+    },
+  ): void {
+    if (tipo === TipoProvedorModelo.OPENAI_COMPAT) {
+      if (!campos.baseUrl || !campos.modelo) {
+        throw new BadRequestException(
+          'um provedor openai-compat exige baseUrl e modelo',
+        );
+      }
+
+      return;
+    }
+
+    if (tipo === TipoProvedorModelo.ANTHROPIC) {
+      if (!campos.chave) {
+        throw new BadRequestException('um provedor anthropic exige a chave');
+      }
+
+      return;
+    }
+
+    if (!campos.comando) {
+      throw new BadRequestException('um provedor cli exige o comando');
+    }
+  }
+
+  private resumirProvedor(provedor: ProvedorModelo): ProvedorResumido {
+    const permitido = this.tipoPermitido(provedor.tipo);
+
+    return {
+      id: provedor.id,
+      nome: provedor.nome,
+      tipo: provedor.tipo,
+      baseUrl: provedor.baseUrl,
+      modelo: provedor.modelo,
+      comando: provedor.comando,
+      dialeto: provedor.dialeto,
+      cabecalhosExtras: Object.keys(provedor.cabecalhosExtras ?? {}),
+      parametros: provedor.parametros,
+      ativo: provedor.ativo && permitido,
+      criadoEm: provedor.criadoEm,
+      chave: this.cifra.resumirSegredo(provedor.chaveCifrada),
+      permitidoPeloEnv: permitido,
+      ...(permitido
+        ? {}
+        : {
+            motivoIndisponivel: `o provedor do tipo "${provedor.tipo}" está fora de PROVEDORES_PERMITIDOS no .env desta instalação`,
+          }),
+    };
+  }
+
   private async ligadaEfetiva(nome: NomeCapacidade): Promise<boolean> {
     const efetiva = (await this.capacidadesEfetivas()).find(
       (item) => item.capacidade === nome,
@@ -502,11 +830,12 @@ export class ConfiguracaoService implements OnModuleInit {
   }
 
   private async carregar(): Promise<Instantaneo> {
-    const [linhas, fontes, alvos, servicos] = await Promise.all([
+    const [linhas, fontes, alvos, servicos, provedores] = await Promise.all([
       this.capacidades.find(),
       this.fontes.find(),
       this.alvos.find(),
       this.servicos.find(),
+      this.modelos.find(),
     ]);
 
     return {
@@ -514,6 +843,7 @@ export class ConfiguracaoService implements OnModuleInit {
       fontes: this.consolidarFontes(fontes),
       alvos,
       servicos,
+      provedores,
     };
   }
 

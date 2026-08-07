@@ -12,7 +12,10 @@ import { join } from 'node:path';
 import { Repository } from 'typeorm';
 import { resolverRaizes } from '../capabilities/codigo/seguranca';
 import { OraculoConfig } from '../config/config.service';
-import { ConfiguracaoService } from '../config/configuracao.service';
+import {
+  ConfiguracaoService,
+  ProvedorResumido,
+} from '../config/configuracao.service';
 import { resolverCaminhoNasRaizes } from '../config/raiz-permitida';
 import { NEGADOS_PADRAO } from '../config/env.schema';
 import { Documento } from '../database/entities';
@@ -50,8 +53,11 @@ function documentosFalsos(): Repository<Documento> {
   } as unknown as Repository<Documento>;
 }
 
-function configuracaoFalsa(): ConfiguracaoService {
+function configuracaoFalsa(
+  provedores: ProvedorResumido[] = [],
+): ConfiguracaoService {
   return {
+    provedores: () => Promise.resolve(provedores),
     capacidadesEfetivas: () =>
       Promise.resolve([
         { capacidade: 'conhecimento', ligada: true, tetoDoEnv: true },
@@ -123,6 +129,7 @@ describe('AmbienteService', () => {
     expect(estado.provedor).toEqual({
       tipo: 'cli',
       modelo: 'gemini-3.6-flash-medium',
+      origem: 'env',
     });
     expect(estado.ultimaIndexacao).toEqual(ULTIMA_INDEXACAO);
     expect(estado.fontes[0]).toMatchObject({
@@ -146,6 +153,38 @@ describe('AmbienteService', () => {
     expect(serializado).not.toMatch(/senha|password/i);
     expect(estado.alvosBanco[0]).not.toHaveProperty('url');
     expect(estado.alvosBanco[0].conexao.host).toBe('10.0.•.•');
+  });
+
+  it('reporta o provedor ativo do banco no lugar do provedor do .env', async () => {
+    const servico = new AmbienteService(
+      configFalsa(),
+      configuracaoFalsa([
+        {
+          id: 'p1',
+          nome: 'ollama-local',
+          tipo: 'openai-compat',
+          baseUrl: 'http://localhost:11434/v1',
+          modelo: 'llama3',
+          comando: null,
+          dialeto: null,
+          cabecalhosExtras: [],
+          parametros: null,
+          ativo: true,
+          criadoEm: ULTIMA_INDEXACAO,
+          chave: { definida: false, dica: null },
+          permitidoPeloEnv: true,
+        } as ProvedorResumido,
+      ]),
+      documentosFalsos(),
+    );
+
+    const estado = await servico.estado();
+
+    expect(estado.provedor).toEqual({
+      tipo: 'openai-compat',
+      modelo: 'llama3',
+      origem: 'banco',
+    });
   });
 });
 

@@ -19,7 +19,9 @@ import {
   AlvoBanco,
   CapacidadeInstalacao,
   FonteConhecimento,
+  ProvedorModelo,
   ServicoObservavel,
+  TipoProvedorModelo,
 } from '../database/entities';
 import { SecurityService } from '../security/security.service';
 import { CifraService } from './cifra.service';
@@ -41,7 +43,34 @@ function criarRepositorio<T extends ComId>(inicial: T[] = []) {
       ([chave, valor]) => (item as Record<string, unknown>)[chave] === valor,
     );
 
+  const gerenciador = {
+    update: jest.fn(
+      (
+        _entidade: unknown,
+        criterio: Record<string, unknown>,
+        patch: Record<string, unknown>,
+      ) => {
+        let afetados = 0;
+
+        dados.forEach((item, indice) => {
+          if (!casa(item, criterio)) return;
+
+          dados[indice] = { ...item, ...patch };
+          afetados += 1;
+        });
+
+        return Promise.resolve({ affected: afetados });
+      },
+    ),
+  };
+
   return {
+    manager: {
+      transaction: jest.fn(
+        (executar: (gerenciador: typeof gerenciador) => Promise<unknown>) =>
+          executar(gerenciador),
+      ),
+    },
     find: jest.fn(() => Promise.resolve(dados.map((item) => ({ ...item })))),
     findOne: jest.fn((opcoes: { where?: Record<string, unknown> }) =>
       Promise.resolve(
@@ -85,6 +114,7 @@ interface Tetos {
   banco?: boolean;
   fontes?: string[];
   bancos?: string[];
+  provedores?: ('cli' | 'anthropic' | 'openai-compat')[];
 }
 
 function configFalsa(tetos: Tetos = {}): OraculoConfig {
@@ -105,6 +135,11 @@ function configFalsa(tetos: Tetos = {}): OraculoConfig {
       comandos: [],
       bancos: tetos.bancos ?? ['producao'],
     },
+    provedoresPermitidos: tetos.provedores ?? [
+      'openai-compat',
+      'cli',
+      'anthropic',
+    ],
     segredoDeConfiguracao: 'segredo-de-teste-com-32-caracteres-ok',
   } as unknown as OraculoConfig;
 }
@@ -115,6 +150,7 @@ interface Montagem {
   fontes: RepositorioFalso<FonteConhecimento>;
   alvos: RepositorioFalso<AlvoBanco>;
   servicos: RepositorioFalso<ServicoObservavel>;
+  modelos: RepositorioFalso<ProvedorModelo>;
   registrar: jest.Mock;
 }
 
@@ -125,6 +161,7 @@ function montar(
     fontes?: Partial<FonteConhecimento>[];
     alvos?: Partial<AlvoBanco>[];
     servicos?: Partial<ServicoObservavel>[];
+    modelos?: Partial<ProvedorModelo>[];
   } = {},
 ): Montagem {
   const config = configFalsa(tetos);
@@ -142,6 +179,9 @@ function montar(
   const servicos = criarRepositorio(
     (sementes.servicos ?? []) as ServicoObservavel[],
   );
+  const modelos = criarRepositorio(
+    (sementes.modelos ?? []) as ProvedorModelo[],
+  );
 
   const servico = new ConfiguracaoService(
     config,
@@ -151,9 +191,10 @@ function montar(
     fontes as unknown as Repository<FonteConhecimento>,
     alvos as unknown as Repository<AlvoBanco>,
     servicos as unknown as Repository<ServicoObservavel>,
+    modelos as unknown as Repository<ProvedorModelo>,
   );
 
-  return { servico, capacidades, fontes, alvos, servicos, registrar };
+  return { servico, capacidades, fontes, alvos, servicos, modelos, registrar };
 }
 
 describe('ConfiguracaoService — o ENV é o teto, o banco é o recorte', () => {
@@ -603,5 +644,276 @@ describe('ConfiguracaoService — cadastro de fonte', () => {
     await expect(
       servico.criarFonte({ caminho: join(raiz, 'docs') }),
     ).rejects.toThrow(ForbiddenException);
+  });
+});
+
+describe('ConfiguracaoService — provedores de modelo', () => {
+  const openai = {
+    nome: 'ollama-local',
+    tipo: 'openai-compat',
+    baseUrl: 'http://localhost:11434/v1',
+    modelo: 'llama3',
+  };
+
+  const anthropic = {
+    nome: 'claude-api',
+    tipo: 'anthropic',
+    modelo: 'claude-haiku-4-5-20251001',
+    chave: 'sk-ant-chave-muito-secreta-de-teste',
+  };
+
+  it('cadastra inativo e só ativa quando mandam ativar', async () => {
+    const { servico } = montar();
+
+    const criado = await servico.criarProvedor(openai, 'usuario-1');
+
+    expect(criado.ativo).toBe(false);
+    expect(await servico.provedorAtivo()).toBeNull();
+
+    const ativado = await servico.ativarProvedor(criado.id, 'usuario-1');
+
+    expect(ativado.ativo).toBe(true);
+    expect(await servico.provedorAtivo()).toMatchObject({
+      nome: 'ollama-local',
+      tipo: 'openai-compat',
+    });
+  });
+
+  it('ativar um desativa todos os outros', async () => {
+    const { servico, modelos } = montar();
+
+    const um = await servico.criarProvedor(openai);
+    const outro = await servico.criarProvedor(anthropic);
+
+    await servico.ativarProvedor(um.id);
+    await servico.ativarProvedor(outro.id);
+
+    const listados = await servico.provedores();
+
+    expect(listados.filter((provedor) => provedor.ativo)).toHaveLength(1);
+    expect(listados.find((provedor) => provedor.ativo)?.nome).toBe(
+      'claude-api',
+    );
+    expect(modelos.manager.transaction).toHaveBeenCalledTimes(2);
+    expect((await servico.provedorAtivo())?.nome).toBe('claude-api');
+  });
+
+  it('nunca devolve a chave em claro pelo CRUD', async () => {
+    const { servico, modelos } = montar();
+
+    const criado = await servico.criarProvedor(anthropic, 'usuario-1');
+
+    expect(JSON.stringify(criado)).not.toContain(anthropic.chave);
+    expect(criado).not.toHaveProperty('chaveCifrada');
+    expect(criado.chave).toEqual({ definida: true, dica: '••••este' });
+
+    const listados = await servico.provedores();
+
+    expect(JSON.stringify(listados)).not.toContain(anthropic.chave);
+    expect(modelos.dados[0].chaveCifrada).not.toContain(anthropic.chave);
+  });
+
+  it('guarda a chave cifrada e só a devolve por dentro, para o resolvedor', async () => {
+    const { servico } = montar();
+    const criado = await servico.criarProvedor(anthropic);
+
+    await servico.ativarProvedor(criado.id);
+
+    expect((await servico.provedorAtivo())?.chave).toBe(anthropic.chave);
+  });
+
+  it('não expõe o valor dos cabeçalhos extras, só o nome deles', async () => {
+    const { servico } = montar();
+
+    const criado = await servico.criarProvedor({
+      ...openai,
+      cabecalhosExtras: { 'x-api-key': 'valor-secreto-do-cabecalho' },
+    });
+
+    expect(JSON.stringify(criado)).not.toContain('valor-secreto-do-cabecalho');
+    expect(criado.cabecalhosExtras).toEqual(['x-api-key']);
+  });
+
+  it('a auditoria de escrita nunca carrega a chave', async () => {
+    const { servico, registrar } = montar();
+
+    await servico.criarProvedor(anthropic, 'usuario-1');
+
+    expect(JSON.stringify(registrar.mock.calls)).not.toContain(anthropic.chave);
+    expect(registrar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ferramentas: [
+          expect.objectContaining({ nome: 'ambiente.provedor.criar' }),
+        ],
+      }),
+    );
+  });
+
+  it('audita a ativação dizendo de onde para onde foi', async () => {
+    const { servico, registrar } = montar();
+    const criado = await servico.criarProvedor(openai);
+
+    registrar.mockClear();
+
+    await servico.ativarProvedor(criado.id, 'usuario-1');
+
+    const [registro] = registrar.mock.calls[0] as [
+      { tom: string; resultado: string },
+    ];
+
+    expect(registro.tom).toBe('configuracao');
+    expect(registro.resultado).toContain('do .env para "ollama-local"');
+  });
+
+  it('remove provedor existente e recusa id desconhecido', async () => {
+    const { servico, modelos } = montar();
+    const criado = await servico.criarProvedor(openai);
+
+    await servico.removerProvedor(criado.id, 'usuario-1');
+
+    expect(modelos.dados).toHaveLength(0);
+    await expect(servico.removerProvedor('inexistente')).rejects.toThrow(
+      /não existe/,
+    );
+  });
+
+  it('recusa nome repetido', async () => {
+    const { servico } = montar();
+
+    await servico.criarProvedor(openai);
+
+    await expect(servico.criarProvedor(openai)).rejects.toThrow(
+      ConflictException,
+    );
+  });
+
+  it('invalida o cache a cada escrita', async () => {
+    const { servico, modelos } = montar();
+
+    await servico.provedores();
+    expect(modelos.find).toHaveBeenCalledTimes(1);
+
+    const criado = await servico.criarProvedor(openai);
+    expect(modelos.find.mock.calls.length).toBeGreaterThan(1);
+
+    const antes = modelos.find.mock.calls.length;
+    await servico.ativarProvedor(criado.id);
+    expect(modelos.find.mock.calls.length).toBeGreaterThan(antes);
+  });
+});
+
+describe('ConfiguracaoService — PROVEDORES_PERMITIDOS é o teto', () => {
+  const foraDaLista = {
+    nome: 'claude-api',
+    tipo: 'anthropic',
+    chave: 'sk-ant-chave-muito-secreta-de-teste',
+  };
+
+  it('recusa cadastrar tipo fora da lista, com motivo legível', async () => {
+    const { servico, modelos } = montar({ provedores: ['cli'] });
+
+    await expect(servico.criarProvedor(foraDaLista)).rejects.toThrow(
+      /está fora de PROVEDORES_PERMITIDOS no \.env desta instalação/,
+    );
+    await expect(servico.criarProvedor(foraDaLista)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(modelos.save).not.toHaveBeenCalled();
+  });
+
+  it('recusa ativar linha de tipo que o ENV proíbe', async () => {
+    const { servico } = montar(
+      { provedores: ['cli'] },
+      {
+        modelos: [
+          {
+            id: 'plantado',
+            nome: 'plantado-na-mao',
+            tipo: TipoProvedorModelo.ANTHROPIC,
+            ativo: false,
+          },
+        ],
+      },
+    );
+
+    await expect(servico.ativarProvedor('plantado')).rejects.toThrow(
+      /PROVEDORES_PERMITIDOS/,
+    );
+  });
+
+  it('ignora linha ativa gravada por fora quando o ENV proíbe o tipo', async () => {
+    const { servico } = montar(
+      { provedores: ['cli'] },
+      {
+        modelos: [
+          {
+            id: 'plantado',
+            nome: 'plantado-na-mao',
+            tipo: TipoProvedorModelo.ANTHROPIC,
+            ativo: true,
+            chaveCifrada: null,
+          },
+        ],
+      },
+    );
+
+    expect(await servico.provedorAtivo()).toBeNull();
+
+    const listados = await servico.provedores();
+
+    expect(listados[0].ativo).toBe(false);
+    expect(listados[0].permitidoPeloEnv).toBe(false);
+    expect(listados[0].motivoIndisponivel).toMatch(/PROVEDORES_PERMITIDOS/);
+  });
+
+  it('recusa tipo que não existe no catálogo', async () => {
+    const { servico } = montar();
+
+    await expect(
+      servico.criarProvedor({ nome: 'x', tipo: 'ollama' }),
+    ).rejects.toThrow(/não existe/);
+  });
+});
+
+describe('ConfiguracaoService — provedor com endereço inseguro', () => {
+  it('recusa baseUrl apontada para o serviço de metadados da instância', async () => {
+    const { servico, modelos } = montar();
+
+    await expect(
+      servico.criarProvedor({
+        nome: 'metadados',
+        tipo: 'openai-compat',
+        baseUrl: 'http://169.254.169.254/v1',
+        modelo: 'qualquer',
+      }),
+    ).rejects.toThrow(/169\.254\.0\.0\/16/);
+    expect(modelos.save).not.toHaveBeenCalled();
+  });
+
+  it('aceita baseUrl local, que é o caso do Ollama', async () => {
+    const { servico } = montar();
+
+    const criado = await servico.criarProvedor({
+      nome: 'ollama',
+      tipo: 'openai-compat',
+      baseUrl: 'http://localhost:11434/v1',
+      modelo: 'llama3',
+    });
+
+    expect(criado.baseUrl).toBe('http://localhost:11434/v1');
+  });
+
+  it('exige os campos mínimos de cada tipo', async () => {
+    const { servico } = montar();
+
+    await expect(
+      servico.criarProvedor({ nome: 'sem-url', tipo: 'openai-compat' }),
+    ).rejects.toThrow(/baseUrl e modelo/);
+    await expect(
+      servico.criarProvedor({ nome: 'sem-chave', tipo: 'anthropic' }),
+    ).rejects.toThrow(/exige a chave/);
+    await expect(
+      servico.criarProvedor({ nome: 'sem-comando', tipo: 'cli' }),
+    ).rejects.toThrow(/exige o comando/);
   });
 });

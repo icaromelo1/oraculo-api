@@ -34,6 +34,19 @@ export const NEGADOS_PADRAO = [
   'cast-workspace',
 ].join(',');
 
+export const TIPOS_DE_PROVEDOR = ['cli', 'anthropic', 'openai-compat'] as const;
+
+export type TipoDeProvedor = (typeof TIPOS_DE_PROVEDOR)[number];
+
+export const PROVEDORES_PADRAO = 'openai-compat,cli,anthropic';
+
+const listaDeProvedores = () =>
+  lista(PROVEDORES_PADRAO).pipe(
+    z.array(z.enum(TIPOS_DE_PROVEDOR)).min(1, {
+      message: `PROVEDORES_PERMITIDOS precisa listar ao menos um de ${TIPOS_DE_PROVEDOR.join(', ')}`,
+    }),
+  );
+
 export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
@@ -42,7 +55,8 @@ export const envSchema = z.object({
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatória'),
 
-  MODEL_PROVIDER: z.enum(['cli', 'anthropic', 'openai-compat']).default('cli'),
+  MODEL_PROVIDER: z.enum(TIPOS_DE_PROVEDOR).default('cli'),
+  PROVEDORES_PERMITIDOS: listaDeProvedores(),
   CLI_COMANDO: z.string().default('claude -p --output-format stream-json'),
   CLI_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   CLI_DIALETO: z.enum(['auto', 'claude', 'agy']).default('auto'),
@@ -107,6 +121,12 @@ export function validarEnv(bruto: Record<string, unknown>): Env {
   }
 
   const env = resultado.data;
+
+  if (!env.PROVEDORES_PERMITIDOS.includes(env.MODEL_PROVIDER)) {
+    throw new Error(
+      `MODEL_PROVIDER=${env.MODEL_PROVIDER} está fora de PROVEDORES_PERMITIDOS (${env.PROVEDORES_PERMITIDOS.join(', ')}) — o provedor do .env é o piso desta instalação e precisa estar na lista`,
+    );
+  }
 
   if (env.MODEL_PROVIDER === 'anthropic' && !env.ANTHROPIC_API_KEY) {
     throw new Error('MODEL_PROVIDER=anthropic exige ANTHROPIC_API_KEY');

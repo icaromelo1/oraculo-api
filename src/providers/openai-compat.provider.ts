@@ -1,5 +1,5 @@
-import { OraculoConfig } from '../config/config.service';
 import { EventoProvedor, LlmProvider, PedidoGeracao } from './llm-provider';
+import type { ConfigDoProvedor } from './provider.factory';
 import {
   analisarJsonSeguro,
   ehObjeto,
@@ -55,8 +55,8 @@ function extrairFragmentos(json: Record<string, unknown>): EventoProvedor[] {
 export class OpenAiCompatProvider implements LlmProvider {
   readonly nome = 'openai-compat';
 
-  constructor(private readonly config: OraculoConfig) {
-    const { openaiBaseUrl, openaiModelo } = config.provedor;
+  constructor(private readonly config: ConfigDoProvedor) {
+    const { openaiBaseUrl, openaiModelo } = config;
     if (!openaiBaseUrl || !openaiModelo) {
       throw new Error(
         'OpenAiCompatProvider exige OPENAI_BASE_URL e OPENAI_MODELO configurados',
@@ -65,7 +65,7 @@ export class OpenAiCompatProvider implements LlmProvider {
   }
 
   async *gerar(pedido: PedidoGeracao): AsyncIterable<EventoProvedor> {
-    const { openaiBaseUrl, openaiChave, openaiModelo } = this.config.provedor;
+    const { openaiBaseUrl, openaiChave, openaiModelo } = this.config;
     const inicio = Date.now();
 
     const corpo = {

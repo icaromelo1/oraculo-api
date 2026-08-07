@@ -4,6 +4,7 @@ import {
   AlvoBanco,
   CapacidadeInstalacao,
   FonteConhecimento,
+  ProvedorModelo,
   ServicoObservavel,
 } from '../database/entities';
 import { SecurityModule } from '../security/security.module';
@@ -19,6 +20,7 @@ import { ConfiguracaoService } from './configuracao.service';
       FonteConhecimento,
       AlvoBanco,
       ServicoObservavel,
+      ProvedorModelo,
     ]),
   ],
   providers: [CifraService, ConfiguracaoService],

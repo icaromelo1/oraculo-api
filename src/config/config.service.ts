@@ -22,6 +22,10 @@ export class OraculoConfig {
     return this.ler('DATABASE_URL');
   }
 
+  get provedoresPermitidos() {
+    return this.ler('PROVEDORES_PERMITIDOS');
+  }
+
   get provedor() {
     return {
       tipo: this.ler('MODEL_PROVIDER'),

@@ -5,8 +5,8 @@ import Anthropic, {
   InternalServerError,
   RateLimitError,
 } from '@anthropic-ai/sdk';
-import { OraculoConfig } from '../config/config.service';
 import { EventoProvedor, LlmProvider, PedidoGeracao } from './llm-provider';
+import type { ConfigDoProvedor } from './provider.factory';
 
 function classificarErro(erro: unknown): string {
   if (erro instanceof RateLimitError) {
@@ -42,8 +42,8 @@ export class AnthropicProvider implements LlmProvider {
 
   private readonly cliente: Anthropic;
 
-  constructor(private readonly config: OraculoConfig) {
-    const { anthropicChave } = config.provedor;
+  constructor(private readonly config: ConfigDoProvedor) {
+    const { anthropicChave } = config;
     if (!anthropicChave) {
       throw new Error('AnthropicProvider exige ANTHROPIC_API_KEY configurada');
     }
@@ -54,7 +54,7 @@ export class AnthropicProvider implements LlmProvider {
     const inicio = Date.now();
 
     const stream = this.cliente.messages.stream({
-      model: this.config.provedor.anthropicModelo,
+      model: this.config.anthropicModelo,
       max_tokens: pedido.maxTokens,
       system: pedido.sistema,
       messages: pedido.mensagens.map((mensagem) => ({

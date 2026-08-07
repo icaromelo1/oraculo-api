@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
-import { OraculoConfig } from '../config/config.service';
 import { AnalisadorEventosAgy, construirArgvAgy } from './agy.analisador';
 import { EventoProvedor, LlmProvider, PedidoGeracao } from './llm-provider';
+import type { ConfigDoProvedor } from './provider.factory';
 import {
   analisarJsonSeguro,
   ehObjeto,
@@ -226,7 +226,7 @@ function construirArgv(pedido: PedidoGeracao, modelo: string): string[] {
 export class CliProvider implements LlmProvider {
   readonly nome = 'cli';
 
-  constructor(private readonly config: OraculoConfig) {}
+  constructor(private readonly config: ConfigDoProvedor) {}
 
   async *gerar(pedido: PedidoGeracao): AsyncIterable<EventoProvedor> {
     for (let tentativa = 1; tentativa <= TENTATIVAS_POR_GERACAO; tentativa++) {
@@ -274,7 +274,7 @@ export class CliProvider implements LlmProvider {
     pedido: PedidoGeracao,
   ): AsyncIterable<EventoProvedor> {
     const { cliComando, cliTimeoutMs, cliDialeto, cliModelo, anthropicModelo } =
-      this.config.provedor;
+      this.config;
     const binario = extrairBinario(cliComando);
     const dialeto = resolverDialeto(cliDialeto, binario);
 
