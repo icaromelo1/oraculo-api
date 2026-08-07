@@ -12,7 +12,7 @@ export interface Procedencia {
 
 const PADRAO_NOTA = /(^|\/)notas\/[^/]+\.md$/i;
 const PADRAO_MEMORIA =
-  /(\.claude\/projects\/[^/]+\/memory\/[^/]+\.md$)|(\/memoria\/[^/]+\.md$)/i;
+  /(\.claude\/projects\/[^/]+\/memory\/[^/]+\.md$)|(\/memoria\/[^/]+\.md$)|(\/memory\/[^/]+\/[^/]+\.md$)/i;
 const PADRAO_AGENTE =
   /claude-workspace-config\/(agents|skills|claudicaro|workspace-agents)(\/|$)/i;
 const PADRAO_CONFIG_VIVA =

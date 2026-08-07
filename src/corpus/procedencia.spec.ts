@@ -133,3 +133,29 @@ describe('procedência com caminhos do container', () => {
     ).toEqual({ fonte: 'memoria', autoridade: 1 });
   });
 });
+
+describe('memória versionada dentro do claude-workspace-config', () => {
+  it('reconhece como memória com autoridade 1', () => {
+    expect(
+      inferirFonte(
+        '/corpus/claude-workspace-config/memory/-Volumes-icaro/feedback_x.md',
+      ),
+    ).toEqual({ fonte: 'memoria', autoridade: 1 });
+  });
+
+  it('continua reconhecendo o espelho e o caminho do claude', () => {
+    expect(inferirFonte('/corpus/oraculo-workspace/memoria/a.md').fonte).toBe(
+      'memoria',
+    );
+    expect(
+      inferirFonte('/corpus/.claude/projects/-slug/memory/b.md').fonte,
+    ).toBe('memoria');
+  });
+
+  it('não confunde skills com memória', () => {
+    expect(
+      inferirFonte('/corpus/claude-workspace-config/skills/commit/SKILL.md')
+        .fonte,
+    ).toBe('agente');
+  });
+});
