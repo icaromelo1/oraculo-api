@@ -37,6 +37,10 @@ export function configDoAtivo(
       openaiBaseUrl: ativo.baseUrl ?? undefined,
       openaiChave: ativo.chave ?? undefined,
       openaiModelo: ativo.modelo ?? undefined,
+      ...(ativo.cabecalhosExtras
+        ? { openaiCabecalhos: ativo.cabecalhosExtras }
+        : {}),
+      ...(ativo.parametros ? { openaiParametros: ativo.parametros } : {}),
     };
   }
 

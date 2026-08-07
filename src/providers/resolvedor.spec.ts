@@ -151,6 +151,53 @@ describe('ResolvedorDeProvedor — troca sem recriar o app', () => {
   });
 });
 
+describe('ResolvedorDeProvedor — extras do openai-compat', () => {
+  it('leva cabeçalhos e parâmetros do banco para a config do provedor', async () => {
+    const { servico } = configuracaoFalsa(
+      provedorAtivo({
+        cabecalhosExtras: { 'X-Title': 'Oráculo' },
+        parametros: { temperature: 0.2 },
+      }),
+    );
+    const resolvedor = new ResolvedorDeProvedor(configFalsa(), servico);
+    const provedor = await resolvedor.resolver();
+
+    expect(provedor).toBeInstanceOf(OpenAiCompatProvider);
+    expect(
+      (provedor as unknown as { config: Record<string, unknown> }).config,
+    ).toMatchObject({
+      openaiCabecalhos: { 'X-Title': 'Oráculo' },
+      openaiParametros: { temperature: 0.2 },
+    });
+  });
+
+  it('descarta a instância quando um cabeçalho extra muda', async () => {
+    const { servico, trocar } = configuracaoFalsa(
+      provedorAtivo({ cabecalhosExtras: { 'X-Title': 'Oráculo' } }),
+    );
+    const resolvedor = new ResolvedorDeProvedor(configFalsa(), servico);
+
+    const primeira = await resolvedor.resolver();
+
+    trocar(provedorAtivo({ cabecalhosExtras: { 'X-Title': 'Outro' } }));
+
+    expect(await resolvedor.resolver()).not.toBe(primeira);
+  });
+
+  it('descarta a instância quando um parâmetro extra muda', async () => {
+    const { servico, trocar } = configuracaoFalsa(
+      provedorAtivo({ parametros: { temperature: 0.2 } }),
+    );
+    const resolvedor = new ResolvedorDeProvedor(configFalsa(), servico);
+
+    const primeira = await resolvedor.resolver();
+
+    trocar(provedorAtivo({ parametros: { temperature: 0.9 } }));
+
+    expect(await resolvedor.resolver()).not.toBe(primeira);
+  });
+});
+
 describe('ResolvedorDeProvedor — cache por configuração', () => {
   it('reusa a instância enquanto a configuração não muda', async () => {
     const { servico } = configuracaoFalsa(provedorAtivo());
