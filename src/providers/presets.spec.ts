@@ -23,7 +23,11 @@ describe('presets de provedor — catálogo', () => {
 
   it('todo preset http declara baseUrl, menos o manual', () => {
     for (const preset of PRESETS_DE_PROVEDOR) {
-      if (preset.id === 'manual' || preset.tipo === 'anthropic') continue;
+      if (
+        preset.id === 'manual' ||
+        preset.tipo === TipoProvedorModelo.ANTHROPIC
+      )
+        continue;
 
       expect(preset.baseUrl).toMatch(/^https?:\/\//);
     }
