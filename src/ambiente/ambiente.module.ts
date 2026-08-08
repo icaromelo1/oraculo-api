@@ -7,6 +7,7 @@ import { SecurityModule } from '../security/security.module';
 import { AmbienteController } from './ambiente.controller';
 import { AmbienteService } from './ambiente.service';
 import { ModulosController } from './modulos.controller';
+import { PersonaController } from './persona.controller';
 import { ProvedoresController } from './provedores.controller';
 import {
   FABRICA_DE_PROVEDOR,
@@ -19,7 +20,12 @@ import {
     SecurityModule,
     TypeOrmModule.forFeature([Documento, ProvedorModelo]),
   ],
-  controllers: [AmbienteController, ModulosController, ProvedoresController],
+  controllers: [
+    AmbienteController,
+    ModulosController,
+    PersonaController,
+    ProvedoresController,
+  ],
   providers: [
     AmbienteService,
     TesteDeProvedorService,

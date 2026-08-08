@@ -10,6 +10,8 @@ import { Mensagem } from './mensagem.entity';
 import { Modulo } from './modulo.entity';
 import { Perfil } from './perfil.entity';
 import { PerfilCapacidade } from './perfil-capacidade.entity';
+import { Persona } from './persona.entity';
+import { PropostaConhecimento } from './proposta-conhecimento.entity';
 import { ProvedorModelo } from './provedor-modelo.entity';
 import { ServicoObservavel } from './servico-observavel.entity';
 import { Trecho } from './trecho.entity';
@@ -36,6 +38,11 @@ export {
   PerfilCapacidade,
   StatusPerfilCapacidade,
 } from './perfil-capacidade.entity';
+export { Persona } from './persona.entity';
+export {
+  PropostaConhecimento,
+  StatusProposta,
+} from './proposta-conhecimento.entity';
 export { ProvedorModelo, TipoProvedorModelo } from './provedor-modelo.entity';
 export { ServicoObservavel } from './servico-observavel.entity';
 export { Trecho } from './trecho.entity';
@@ -58,4 +65,6 @@ export const entidades = [
   AlvoBanco,
   ServicoObservavel,
   ProvedorModelo,
+  PropostaConhecimento,
+  Persona,
 ];

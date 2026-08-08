@@ -18,6 +18,7 @@ import {
   FonteConhecimento,
   Modulo,
   NomeCapacidadeInstalacao,
+  Persona,
   ProvedorModelo,
   ServicoObservavel,
   TipoProvedorModelo,
@@ -183,6 +184,11 @@ export interface DescricaoDeDocumento {
   descricao: string | null;
 }
 
+export interface ModuloIdentificado {
+  id: string;
+  nome: string;
+}
+
 export const TETO_DO_MAPA_DE_MODULOS = 800;
 
 const TETO_DA_LINHA_DO_MAPA = 200;
@@ -200,6 +206,7 @@ interface Instantaneo {
   servicos: ServicoObservavel[];
   provedores: ProvedorModelo[];
   modulos: Modulo[];
+  persona: string | null;
 }
 
 @Injectable()
@@ -228,6 +235,8 @@ export class ConfiguracaoService implements OnModuleInit {
     private readonly tabelaDeModulos: Repository<Modulo>,
     @InjectRepository(Documento)
     private readonly documentos: Repository<Documento>,
+    @InjectRepository(Persona)
+    private readonly personas: Repository<Persona>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -878,6 +887,58 @@ export class ConfiguracaoService implements OnModuleInit {
     return { id: documento.id, descricao: nova || null };
   }
 
+  async persona(): Promise<string | null> {
+    return (await this.estado()).persona;
+  }
+
+  async definirPersona(
+    texto: string,
+    usuarioId?: string | null,
+  ): Promise<string | null> {
+    const nova = typeof texto === 'string' ? texto.trim() : '';
+    const anterior = (await this.estado()).persona;
+    const [existente] = await this.personas.find();
+
+    await this.personas.save(
+      this.personas.create({
+        ...(existente ? { id: existente.id } : {}),
+        texto: nova,
+        atualizadaPor: this.referenciaUsuario(usuarioId),
+      }),
+    );
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.persona.definir',
+      { caracteres: nova.length },
+      `persona da instalação passou de ${
+        anterior ? `${anterior.length} caractere(s)` : 'a do código'
+      } para ${nova ? `${nova.length} caractere(s)` : 'a do código'}`,
+    );
+
+    return (await this.estado()).persona;
+  }
+
+  async identificarModulo(nome: string): Promise<ModuloIdentificado | null> {
+    const alvo = this.chaveDeModulo(nome);
+
+    if (!alvo) {
+      return null;
+    }
+
+    const achado = (await this.estado()).modulos.find(
+      (modulo) => this.chaveDeModulo(modulo.nome) === alvo,
+    );
+
+    return achado ? { id: achado.id, nome: achado.nome } : null;
+  }
+
+  private chaveDeModulo(bruto: string): string {
+    return String(bruto).replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt-BR');
+  }
+
   async mapaDeModulos(): Promise<string> {
     const [instantaneo, contagem] = await Promise.all([
       this.estado(),
@@ -1259,7 +1320,7 @@ export class ConfiguracaoService implements OnModuleInit {
   }
 
   private async carregar(): Promise<Instantaneo> {
-    const [linhas, fontes, alvos, servicos, provedores, modulos] =
+    const [linhas, fontes, alvos, servicos, provedores, modulos, personas] =
       await Promise.all([
         this.capacidades.find(),
         this.fontes.find(),
@@ -1267,6 +1328,7 @@ export class ConfiguracaoService implements OnModuleInit {
         this.servicos.find(),
         this.modelos.find(),
         this.tabelaDeModulos.find(),
+        this.personas.find(),
       ]);
 
     return {
@@ -1276,6 +1338,7 @@ export class ConfiguracaoService implements OnModuleInit {
       servicos,
       provedores,
       modulos,
+      persona: personas[0]?.texto?.trim() || null,
     };
   }
 

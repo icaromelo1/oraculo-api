@@ -11,6 +11,7 @@ import {
   Documento,
   FonteConhecimento,
   Modulo,
+  Persona,
   ProvedorModelo,
   ServicoObservavel,
   TipoProvedorModelo,
@@ -185,6 +186,7 @@ function montar(
   const modelos = criarRepositorio<ProvedorModelo>(opcoes.modelos ?? []);
   const modulos = criarRepositorio<Modulo>();
   const documentos = criarRepositorio<Documento>();
+  const personas = criarRepositorio<Persona>();
 
   const configuracao = new ConfiguracaoService(
     config,
@@ -197,6 +199,7 @@ function montar(
     modelos as unknown as Repository<ProvedorModelo>,
     modulos as unknown as Repository<Modulo>,
     documentos as unknown as Repository<Documento>,
+    personas as unknown as Repository<Persona>,
   );
 
   const fabrica = jest.fn<LlmProvider, [ConfigDoProvedor]>(

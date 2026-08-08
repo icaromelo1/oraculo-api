@@ -22,6 +22,7 @@ import {
   Documento,
   FonteConhecimento,
   Modulo,
+  Persona,
   ProvedorModelo,
   ServicoObservavel,
   TipoProvedorModelo,
@@ -236,6 +237,7 @@ interface Montagem {
   modelos: RepositorioFalso<ProvedorModelo>;
   modulos: RepositorioFalso<Modulo>;
   documentos: ReturnType<typeof criarRepositorioDeDocumentos>;
+  personas: RepositorioFalso<Persona>;
   registrar: jest.Mock;
 }
 
@@ -249,6 +251,7 @@ function montar(
     modelos?: Partial<ProvedorModelo>[];
     modulos?: Partial<Modulo>[];
     documentos?: Partial<Documento>[];
+    personas?: Partial<Persona>[];
   } = {},
 ): Montagem {
   ROTAS.clear();
@@ -276,6 +279,7 @@ function montar(
     Modulo,
   );
   const documentos = criarRepositorioDeDocumentos(sementes.documentos ?? []);
+  const personas = criarRepositorio((sementes.personas ?? []) as Persona[]);
 
   const servico = new ConfiguracaoService(
     config,
@@ -288,6 +292,7 @@ function montar(
     modelos as unknown as Repository<ProvedorModelo>,
     modulos as unknown as Repository<Modulo>,
     documentos as unknown as Repository<Documento>,
+    personas as unknown as Repository<Persona>,
   );
 
   return {
@@ -299,6 +304,7 @@ function montar(
     modelos,
     modulos,
     documentos,
+    personas,
     registrar,
   };
 }
@@ -1451,5 +1457,115 @@ describe('ConfiguracaoService — mapa compacto de módulos', () => {
     const { servico } = montar();
 
     expect(await servico.mapaDeModulos()).toBe('');
+  });
+});
+
+describe('ConfiguracaoService — persona da instalação', () => {
+  it('sem linha no banco, não há persona e vale a do código', async () => {
+    const { servico } = montar();
+
+    expect(await servico.persona()).toBeNull();
+  });
+
+  it('devolve a persona gravada, já aparada', async () => {
+    const { servico } = montar(
+      {},
+      { personas: [{ texto: '  Voce fala como um plantonista.  ' }] },
+    );
+
+    expect(await servico.persona()).toBe('Voce fala como um plantonista.');
+  });
+
+  it('grava a persona, invalida o cache e audita a troca', async () => {
+    const { servico, personas, registrar } = montar();
+
+    const gravada = await servico.definirPersona('Persona nova', 'u1');
+
+    expect(gravada).toBe('Persona nova');
+    expect(await servico.persona()).toBe('Persona nova');
+    expect(personas.dados).toHaveLength(1);
+
+    const registro = registroDe(registrar, 0);
+
+    expect(registro.tom).toBe('configuracao');
+    expect(registro.resultado).toBe(
+      'persona da instalação passou de a do código para 12 caractere(s)',
+    );
+    expect(registro.ferramentas).toEqual([
+      {
+        nome: 'ambiente.persona.definir',
+        argumento: { caracteres: 12 },
+        status: 'aplicada',
+      },
+    ]);
+  });
+
+  it('reescreve a mesma linha em vez de acumular personas', async () => {
+    const { servico, personas } = montar(
+      {},
+      { personas: [{ id: 'persona-1', texto: 'primeira' }] },
+    );
+
+    await servico.definirPersona('segunda');
+
+    expect(personas.dados).toHaveLength(1);
+    expect(personas.dados[0]).toMatchObject({
+      id: 'persona-1',
+      texto: 'segunda',
+    });
+  });
+
+  it('persona vazia volta para a do código', async () => {
+    const { servico } = montar({}, { personas: [{ texto: 'persona antiga' }] });
+
+    expect(await servico.definirPersona('   ')).toBeNull();
+    expect(await servico.persona()).toBeNull();
+  });
+
+  it('a persona não carrega nenhum bloco fixo do prompt', async () => {
+    const { servico, personas } = montar();
+
+    await servico.definirPersona('qualquer coisa');
+
+    expect(Object.keys(personas.dados[0]).sort()).toEqual([
+      'atualizadaPor',
+      'id',
+      'texto',
+    ]);
+  });
+});
+
+describe('ConfiguracaoService — módulo por nome', () => {
+  it('acha o módulo pelo nome que o modelo vê no mapa', async () => {
+    const { servico } = montar(
+      {},
+      { modulos: [{ id: 'm1', nome: 'memoria e preferencias' }] },
+    );
+
+    expect(await servico.identificarModulo('memoria e preferencias')).toEqual({
+      id: 'm1',
+      nome: 'memoria e preferencias',
+    });
+  });
+
+  it('ignora caixa e espaço sobrando', async () => {
+    const { servico } = montar(
+      {},
+      { modulos: [{ id: 'm1', nome: 'VM Oracle' }] },
+    );
+
+    expect(await servico.identificarModulo('  vm   oracle ')).toMatchObject({
+      id: 'm1',
+    });
+  });
+
+  it('devolve nulo para nome que não existe e para nome vazio', async () => {
+    const { servico } = montar(
+      {},
+      { modulos: [{ id: 'm1', nome: 'vm oracle' }] },
+    );
+
+    expect(await servico.identificarModulo('financeiro')).toBeNull();
+    expect(await servico.identificarModulo('   ')).toBeNull();
   });
 });

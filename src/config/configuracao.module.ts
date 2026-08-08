@@ -6,6 +6,7 @@ import {
   Documento,
   FonteConhecimento,
   Modulo,
+  Persona,
   ProvedorModelo,
   ServicoObservavel,
 } from '../database/entities';
@@ -25,6 +26,7 @@ import { ConfiguracaoService } from './configuracao.service';
       ProvedorModelo,
       Modulo,
       Documento,
+      Persona,
     ]),
   ],
   providers: [CifraService, ConfiguracaoService],
