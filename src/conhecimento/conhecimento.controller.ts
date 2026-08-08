@@ -9,10 +9,10 @@ import {
   Put,
   Query,
   Req,
-  UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import {
   BibliotecaService,
@@ -22,6 +22,8 @@ import {
 import {
   ArquivoEnviado,
   ConhecimentoService,
+  LoteEnviado,
+  MAXIMO_DE_ARQUIVOS_POR_LOTE,
   NotaGravada,
   TAMANHO_MAXIMO_BYTES,
 } from './conhecimento.service';
@@ -69,15 +71,21 @@ export class ConhecimentoController {
 
   @Post('arquivos')
   @UseInterceptors(
-    FileInterceptor(CAMPO_DO_ARQUIVO, {
-      limits: { fileSize: TAMANHO_MAXIMO_BYTES, files: 1 },
+    FilesInterceptor(CAMPO_DO_ARQUIVO, MAXIMO_DE_ARQUIVOS_POR_LOTE, {
+      limits: {
+        fileSize: TAMANHO_MAXIMO_BYTES,
+        files: MAXIMO_DE_ARQUIVOS_POR_LOTE,
+      },
     }),
   )
-  enviarArquivo(
-    @UploadedFile() arquivo: ArquivoEnviado | undefined,
+  enviarArquivos(
+    @UploadedFiles() arquivos: ArquivoEnviado[] | undefined,
     @Req() requisicao: RequisicaoAutenticada,
-  ): Promise<NotaGravada> {
-    return this.conhecimento.enviarArquivo(arquivo, this.usuarioId(requisicao));
+  ): Promise<LoteEnviado> {
+    return this.conhecimento.enviarArquivos(
+      arquivos,
+      this.usuarioId(requisicao),
+    );
   }
 
   @Put('notas/:slug')

@@ -1,3 +1,11 @@
+jest.mock('unpdf', () => {
+  const real = jest.requireActual<typeof import('../conhecimento/unpdf-real')>(
+    '../conhecimento/unpdf-real',
+  );
+
+  return real.delegarParaUnpdfReal();
+});
+
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -8,6 +16,7 @@ import { Documento, Trecho } from '../database/entities';
 import { EmbeddingService } from './embedding.service';
 import { IndexacaoService } from './indexacao.service';
 import { VarreduraService } from './varredura.service';
+import { pdfComTexto, pdfEscaneado } from '../conhecimento/pdf-fixture';
 
 function criarRepositorioDeDocumentos() {
   const dados: Documento[] = [];
@@ -135,5 +144,45 @@ describe('IndexacaoService — a varredura não conhece módulo nem descrição'
     expect(resultado.status).toBe('inalterado');
     expect(documentos.save).not.toHaveBeenCalled();
     expect(documentos.dados[0].moduloId).toBe('modulo-da-memoria');
+  });
+});
+
+describe('PDF encontrado pela varredura', () => {
+  let raizPdf: string;
+
+  beforeEach(async () => {
+    raizPdf = await mkdtemp(join(tmpdir(), 'oraculo-pdf-'));
+  });
+
+  afterEach(async () => {
+    await rm(raizPdf, { recursive: true, force: true });
+  });
+
+  it('indexa o texto extraído em vez de descartar como binário', async () => {
+    const { servico, documentos, trechos } = montar();
+    const arquivo = join(raizPdf, 'manual.pdf');
+    await writeFile(arquivo, pdfComTexto());
+
+    const resultado = await servico.indexarArquivo(arquivo);
+
+    expect(resultado.status).not.toBe('binario_ignorado');
+    expect(resultado.trechos).toBeGreaterThan(0);
+    const gravados = trechos.save.mock.calls.flatMap(
+      ([lote]: [Partial<Trecho>[]]) => lote,
+    );
+
+    expect(gravados.map((t) => t.texto).join(' ')).toContain('Oraculo');
+    expect(documentos.dados).toHaveLength(1);
+  });
+
+  it('ignora pdf escaneado, sem criar documento fantasma', async () => {
+    const { servico, documentos } = montar();
+    const arquivo = join(raizPdf, 'escaneado.pdf');
+    await writeFile(arquivo, pdfEscaneado());
+
+    const resultado = await servico.indexarArquivo(arquivo);
+
+    expect(resultado.status).toBe('binario_ignorado');
+    expect(documentos.dados).toHaveLength(0);
   });
 });

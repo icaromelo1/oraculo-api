@@ -12,6 +12,13 @@ jest.mock('node:fs/promises', () => ({
   writeFile: jest.fn(),
 }));
 
+jest.mock('unpdf', () => {
+  const real =
+    jest.requireActual<typeof import('./unpdf-real')>('./unpdf-real');
+
+  return real.delegarParaUnpdfReal();
+});
+
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { OraculoConfig } from '../config/config.service';
 import { IndexacaoService } from '../corpus/indexacao.service';
@@ -19,8 +26,10 @@ import { SecurityService } from '../security/security.service';
 import {
   ArquivoEnviado,
   ConhecimentoService,
+  MAXIMO_DE_ARQUIVOS_POR_LOTE,
   TAMANHO_MAXIMO_BYTES,
 } from './conhecimento.service';
+import { pdfComTexto, pdfCorrompido, pdfEscaneado } from './pdf-fixture';
 
 const DIRETORIO = '/corpus/notas';
 const NULO = String.fromCharCode(0);
@@ -304,7 +313,7 @@ describe('ConhecimentoService.enviarArquivo', () => {
     ).rejects.toBeInstanceOf(PayloadTooLargeException);
   });
 
-  it('recusa PDF pela extensão, dizendo que ainda não é suportado', async () => {
+  it('recusa .pdf que não abre, com o erro do leitor tratado', async () => {
     const { servico } = montar();
 
     const erro = await servico
@@ -319,10 +328,11 @@ describe('ConhecimentoService.enviarArquivo', () => {
 
     expect(erro).toBeInstanceOf(UnsupportedMediaTypeException);
     expect((erro as Error).message).toContain('PDF');
+    expect((erro as Error).message).toContain('corrompido');
     expect(writeFileFalso).not.toHaveBeenCalled();
   });
 
-  it('recusa PDF disfarçado de .md pela assinatura do conteúdo', async () => {
+  it('trata PDF disfarçado de .md pela assinatura do conteúdo, não pela extensão', async () => {
     const { servico } = montar();
 
     const erro = await servico
@@ -339,7 +349,56 @@ describe('ConhecimentoService.enviarArquivo', () => {
     expect((erro as Error).message).toContain('PDF');
   });
 
-  it('recusa extensão fora de .md e .txt', async () => {
+  it('aceita PDF com texto: grava o texto extraído como .md e indexa', async () => {
+    const { servico, indexacao } = montar();
+
+    const nota = await servico.enviarArquivo(
+      arquivo({
+        originalname: 'Guia do Oraculo.pdf',
+        mimetype: 'application/pdf',
+        buffer: pdfComTexto('Deposito Antecipado'),
+      }),
+    );
+
+    expect(nota.slug).toBe('guia-do-oraculo');
+    expect(nota.caminho).toBe(`${DIRETORIO}/guia-do-oraculo.md`);
+    expect(nota.trechosIndexados).toBe(3);
+    expect(writeFileFalso).toHaveBeenCalledWith(
+      `${DIRETORIO}/guia-do-oraculo.md`,
+      expect.stringContaining('Deposito Antecipado'),
+      'utf-8',
+    );
+    expect(writeFileFalso).toHaveBeenCalledWith(
+      `${DIRETORIO}/guia-do-oraculo.md`,
+      expect.stringContaining('# Guia do Oraculo'),
+      'utf-8',
+    );
+    expect(indexacao.indexarArquivo).toHaveBeenCalledWith(
+      `${DIRETORIO}/guia-do-oraculo.md`,
+    );
+  });
+
+  it('recusa PDF digitalizado, que não tem camada de texto, sem gravar nada', async () => {
+    const { servico, indexacao } = montar();
+
+    const erro = await servico
+      .enviarArquivo(
+        arquivo({
+          originalname: 'escaneado.pdf',
+          mimetype: 'application/pdf',
+          buffer: pdfEscaneado(),
+        }),
+      )
+      .catch((capturado: unknown) => capturado);
+
+    expect(erro).toBeInstanceOf(UnsupportedMediaTypeException);
+    expect((erro as Error).message).toContain('imagem');
+    expect((erro as Error).message).toContain('OCR');
+    expect(writeFileFalso).not.toHaveBeenCalled();
+    expect(indexacao.indexarArquivo).not.toHaveBeenCalled();
+  });
+
+  it('recusa extensão fora de .md, .txt e .pdf', async () => {
     const { servico } = montar();
 
     await expect(
@@ -372,6 +431,134 @@ describe('ConhecimentoService.enviarArquivo', () => {
 
     expect(nota.slug).toBe('passwd');
     expect(nota.caminho).toBe(`${DIRETORIO}/passwd.md`);
+  });
+});
+
+describe('ConhecimentoService.enviarArquivos', () => {
+  it('um arquivo só continua funcionando', async () => {
+    const { servico } = montar();
+
+    const lote = await servico.enviarArquivos([
+      arquivo({ originalname: 'sozinho.md' }),
+    ]);
+
+    expect(lote).toEqual({
+      total: 1,
+      aceitos: 1,
+      recusados: 0,
+      itens: [
+        {
+          arquivo: 'sozinho.md',
+          aceito: true,
+          motivo: null,
+          id: 'doc-1',
+          slug: 'sozinho',
+          caminho: `${DIRETORIO}/sozinho.md`,
+          trechosIndexados: 3,
+        },
+      ],
+    });
+  });
+
+  it('um arquivo ruim não derruba o lote — devolve os dois resultados', async () => {
+    const { servico } = montar();
+
+    const lote = await servico.enviarArquivos([
+      arquivo({ originalname: 'bom.md' }),
+      arquivo({
+        originalname: 'ruim.exe',
+        buffer: Buffer.from('MZ binário', 'latin1'),
+      }),
+      arquivo({ originalname: 'outro-bom.txt' }),
+    ]);
+
+    expect(lote.total).toBe(3);
+    expect(lote.aceitos).toBe(2);
+    expect(lote.recusados).toBe(1);
+    expect(lote.itens.map((item) => item.arquivo)).toEqual([
+      'bom.md',
+      'ruim.exe',
+      'outro-bom.txt',
+    ]);
+    expect(lote.itens[1].aceito).toBe(false);
+    expect(lote.itens[1].motivo).toContain('não é aceito');
+    expect(lote.itens[1].caminho).toBeNull();
+    expect(lote.itens[0].caminho).toBe(`${DIRETORIO}/bom.md`);
+    expect(lote.itens[2].caminho).toBe(`${DIRETORIO}/outro-bom.md`);
+  });
+
+  it('mistura PDF indexado e PDF digitalizado recusado no mesmo lote', async () => {
+    const { servico } = montar();
+
+    const lote = await servico.enviarArquivos([
+      arquivo({
+        originalname: 'com-texto.pdf',
+        mimetype: 'application/pdf',
+        buffer: pdfComTexto('Relatorio de Producao'),
+      }),
+      arquivo({
+        originalname: 'escaneado.pdf',
+        mimetype: 'application/pdf',
+        buffer: pdfEscaneado(),
+      }),
+      arquivo({
+        originalname: 'quebrado.pdf',
+        mimetype: 'application/pdf',
+        buffer: pdfCorrompido(),
+      }),
+    ]);
+
+    expect(lote.aceitos).toBe(1);
+    expect(lote.recusados).toBe(2);
+    expect(lote.itens[0].caminho).toBe(`${DIRETORIO}/com-texto.md`);
+    expect(lote.itens[1].motivo).toContain('OCR');
+    expect(lote.itens[2].motivo).toContain('corrompido');
+    expect(writeFileFalso).toHaveBeenCalledTimes(1);
+  });
+
+  it('aceita o lote no teto de 20 arquivos e recusa o de 21', async () => {
+    const { servico } = montar();
+
+    const cheio = Array.from(
+      { length: MAXIMO_DE_ARQUIVOS_POR_LOTE },
+      (_valor, indice) => arquivo({ originalname: `nota-${indice}.md` }),
+    );
+
+    const lote = await servico.enviarArquivos(cheio);
+
+    expect(lote.total).toBe(MAXIMO_DE_ARQUIVOS_POR_LOTE);
+    expect(lote.aceitos).toBe(MAXIMO_DE_ARQUIVOS_POR_LOTE);
+
+    await expect(
+      servico.enviarArquivos([...cheio, arquivo({ originalname: 'extra.md' })]),
+    ).rejects.toBeInstanceOf(PayloadTooLargeException);
+  });
+
+  it('recusa lote vazio ou ausente antes de tocar em disco', async () => {
+    const { servico } = montar();
+
+    await expect(servico.enviarArquivos([])).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(servico.enviarArquivos(undefined)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(writeFileFalso).not.toHaveBeenCalled();
+  });
+
+  it('registra cada arquivo aceito na auditoria, um registro por arquivo', async () => {
+    const { servico, seguranca } = montar();
+
+    await servico.enviarArquivos(
+      [
+        arquivo({ originalname: 'um.md' }),
+        arquivo({ originalname: 'dois.md' }),
+        arquivo({ originalname: 'tres.csv' }),
+      ],
+      'usuario-7',
+    );
+
+    expect(seguranca.registrar).toHaveBeenCalledTimes(2);
   });
 });
 

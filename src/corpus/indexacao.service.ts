@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { readFile } from 'node:fs/promises';
 import { pareceBinario } from '../capabilities/codigo/binario';
+import { extrairTextoDePdf, pareceDocumentoPdf } from '../conhecimento/pdf';
 import { Repository } from 'typeorm';
 import { Documento, Trecho } from '../database/entities';
 import { quebrarDocumento } from './chunking';
@@ -89,11 +90,41 @@ export class IndexacaoService {
   async indexarArquivo(caminhoAbsoluto: string): Promise<ResultadoArquivo> {
     const bruto = await readFile(caminhoAbsoluto);
 
+    if (pareceDocumentoPdf(caminhoAbsoluto, undefined, bruto)) {
+      return this.indexarPdf(caminhoAbsoluto, bruto);
+    }
+
     if (pareceBinario(bruto)) {
       return { documentoId: null, status: 'binario_ignorado', trechos: 0 };
     }
 
-    const conteudo = bruto.toString('utf-8').split(BYTE_NULO).join('');
+    return this.indexarConteudo(
+      caminhoAbsoluto,
+      bruto.toString('utf-8').split(BYTE_NULO).join(''),
+    );
+  }
+
+  private async indexarPdf(
+    caminhoAbsoluto: string,
+    bruto: Buffer,
+  ): Promise<ResultadoArquivo> {
+    const extraido = await extrairTextoDePdf(caminhoAbsoluto, bruto);
+
+    if (!extraido.aceito) {
+      this.logger.warn(
+        `pdf sem texto extraível ignorado: ${caminhoAbsoluto} — ${extraido.motivo}`,
+      );
+
+      return { documentoId: null, status: 'binario_ignorado', trechos: 0 };
+    }
+
+    return this.indexarConteudo(caminhoAbsoluto, extraido.texto);
+  }
+
+  private async indexarConteudo(
+    caminhoAbsoluto: string,
+    conteudo: string,
+  ): Promise<ResultadoArquivo> {
     const procedencia = construirProcedencia(
       caminhoAbsoluto,
       conteudo,

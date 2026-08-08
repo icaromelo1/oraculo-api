@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,13 +16,14 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, extname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { pareceBinario } from '../capabilities/codigo/binario';
 import { OraculoConfig } from '../config/config.service';
 import { IndexacaoService } from '../corpus/indexacao.service';
 import { extrairTitulo } from '../corpus/procedencia';
 import { SecurityService } from '../security/security.service';
 import { CriarNotaDto } from './dto/criar-nota.dto';
+import { extrairTextoDePdf, mensagemDoErro, pareceDocumentoPdf } from './pdf';
 import {
   gerarSlug,
   proximoSlug,
@@ -38,12 +40,13 @@ export interface NotaListada {
 }
 
 export const TAMANHO_MAXIMO_BYTES = 2 * 1024 * 1024;
-const EXTENSOES_ACEITAS = ['.md', '.txt'];
+export const MAXIMO_DE_ARQUIVOS_POR_LOTE = 20;
+const EXTENSOES_ACEITAS = ['.md', '.txt', '.pdf'];
 
 const EXTENSAO_GRAVADA = '.md';
-const ASSINATURA_PDF = '%PDF-';
 const MAX_TENTATIVAS_DE_SLUG = 500;
 const HEADING = /^#{1,6}\s+\S/;
+const BYTE_NULO = String.fromCharCode(0);
 
 export interface ArquivoEnviado {
   originalname: string;
@@ -57,6 +60,23 @@ export interface NotaGravada {
   slug: string;
   caminho: string;
   trechosIndexados: number;
+}
+
+export interface ItemDoLote {
+  arquivo: string;
+  aceito: boolean;
+  motivo: string | null;
+  id: string | null;
+  slug: string | null;
+  caminho: string | null;
+  trechosIndexados: number;
+}
+
+export interface LoteEnviado {
+  total: number;
+  aceitos: number;
+  recusados: number;
+  itens: ItemDoLote[];
 }
 
 @Injectable()
@@ -99,6 +119,40 @@ export class ConhecimentoService {
     });
   }
 
+  async enviarArquivos(
+    arquivos: readonly ArquivoEnviado[] | undefined,
+    usuarioId?: string | null,
+  ): Promise<LoteEnviado> {
+    const lote = arquivos ?? [];
+
+    if (lote.length === 0) {
+      throw new BadRequestException(
+        'nenhum arquivo recebido — envie multipart/form-data com o campo "arquivo"',
+      );
+    }
+
+    if (lote.length > MAXIMO_DE_ARQUIVOS_POR_LOTE) {
+      throw new PayloadTooLargeException(
+        `o lote traz ${lote.length} arquivos — o máximo é ${MAXIMO_DE_ARQUIVOS_POR_LOTE} por envio`,
+      );
+    }
+
+    const itens: ItemDoLote[] = [];
+
+    for (const arquivo of lote) {
+      itens.push(await this.tentarArquivo(arquivo, usuarioId));
+    }
+
+    const aceitos = itens.filter((item) => item.aceito).length;
+
+    return {
+      total: itens.length,
+      aceitos,
+      recusados: itens.length - aceitos,
+      itens,
+    };
+  }
+
   async enviarArquivo(
     arquivo: ArquivoEnviado | undefined,
     usuarioId?: string | null,
@@ -128,16 +182,14 @@ export class ConhecimentoService {
       );
     }
 
-    if (this.ehPdf(nome, arquivo.mimetype, buffer)) {
+    if (!EXTENSOES_ACEITAS.includes(extensao)) {
       throw new UnsupportedMediaTypeException(
-        'PDF ainda não é suportado pelo Oráculo — converta para .md ou .txt, ou cole o texto como nota',
+        `"${nome}" não é aceito — só ${EXTENSOES_ACEITAS.join(', ')}`,
       );
     }
 
-    if (!EXTENSOES_ACEITAS.includes(extensao)) {
-      throw new UnsupportedMediaTypeException(
-        `"${nome}" não é aceito — só ${EXTENSOES_ACEITAS.join(' e ')}`,
-      );
+    if (pareceDocumentoPdf(nome, arquivo.mimetype, buffer)) {
+      return this.gravarPdf(nome, buffer, usuarioId);
     }
 
     if (pareceBinario(buffer) || buffer.includes(0)) {
@@ -264,6 +316,71 @@ export class ConhecimentoService {
       .sort((a, b) => b.atualizadaEm.getTime() - a.atualizadaEm.getTime());
   }
 
+  private async tentarArquivo(
+    arquivo: ArquivoEnviado | undefined,
+    usuarioId?: string | null,
+  ): Promise<ItemDoLote> {
+    const nome = (arquivo?.originalname ?? '').trim() || '(sem nome)';
+
+    try {
+      const nota = await this.enviarArquivo(arquivo, usuarioId);
+
+      return {
+        arquivo: nome,
+        aceito: true,
+        motivo: null,
+        id: nota.id,
+        slug: nota.slug,
+        caminho: nota.caminho,
+        trechosIndexados: nota.trechosIndexados,
+      };
+    } catch (erro) {
+      if (!(erro instanceof HttpException)) {
+        this.logger.error(
+          `falha inesperada ao receber "${nome}": ${mensagemDoErro(erro)}`,
+        );
+      }
+
+      return {
+        arquivo: nome,
+        aceito: false,
+        motivo: mensagemDoErro(erro),
+        id: null,
+        slug: null,
+        caminho: null,
+        trechosIndexados: 0,
+      };
+    }
+  }
+
+  private async gravarPdf(
+    nome: string,
+    buffer: Buffer,
+    usuarioId?: string | null,
+  ): Promise<NotaGravada> {
+    const extracao = await extrairTextoDePdf(nome, buffer);
+
+    if (!extracao.aceito) {
+      throw new UnsupportedMediaTypeException(extracao.motivo);
+    }
+
+    const texto = extracao.texto.split(BYTE_NULO).join('');
+
+    if (Buffer.byteLength(texto, 'utf-8') > TAMANHO_MAXIMO_BYTES) {
+      throw new PayloadTooLargeException(
+        `o texto extraído de "${nome}" passou do teto de 2 MB`,
+      );
+    }
+
+    return this.gravar({
+      slugBase: slugDoNomeDeArquivo(nome),
+      conteudo: this.corpoDaNota(tituloDoArquivo(nome), texto),
+      acao: 'conhecimento.arquivo.enviar',
+      descricao: `PDF "${nome}" (${extracao.paginas} página(s), texto extraído)`,
+      usuarioId,
+    });
+  }
+
   private async gravar(entrada: {
     slugBase: string;
     conteudo: string;
@@ -386,20 +503,6 @@ export class ConhecimentoService {
     return `# ${titulo}\n\n${conteudo}`;
   }
 
-  private ehPdf(
-    nome: string,
-    mimetype: string | undefined,
-    buffer: Buffer,
-  ): boolean {
-    if (extname(nome).toLowerCase() === '.pdf') return true;
-    if (mimetype === 'application/pdf') return true;
-
-    return (
-      buffer.subarray(0, ASSINATURA_PDF.length).toString('latin1') ===
-      ASSINATURA_PDF
-    );
-  }
-
   private utf8Valido(buffer: Buffer): boolean {
     try {
       new TextDecoder('utf-8', { fatal: true }).decode(buffer);
@@ -427,4 +530,10 @@ export class ConhecimentoService {
       modelo: '(conhecimento)',
     });
   }
+}
+
+function tituloDoArquivo(nome: string): string {
+  const semDiretorio = basename(nome.replace(/\\/g, '/'));
+
+  return basename(semDiretorio, extname(semDiretorio)) || semDiretorio;
 }

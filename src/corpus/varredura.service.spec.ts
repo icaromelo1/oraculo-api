@@ -8,7 +8,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { OraculoConfig } from '../config/config.service';
 import { ConfiguracaoService } from '../config/configuracao.service';
 import { NEGADOS_PADRAO } from '../config/env.schema';
@@ -25,9 +25,12 @@ describe('varrerFontes', () => {
     raiz = await mkdtemp(join(tmpdir(), 'oraculo-varredura-'));
 
     await writeFile(join(raiz, 'normal.md'), '# Normal\nconteúdo');
+    await writeFile(join(raiz, 'anotacoes.txt'), 'texto solto');
     await writeFile(join(raiz, 'secrets.local.md'), '# segredo');
     await writeFile(join(raiz, '.env'), 'CHAVE=valor');
     await writeFile(join(raiz, 'docker-compose.yml'), 'services: {}');
+    await writeFile(join(raiz, 'servico.ts'), 'export const x = 1;');
+    await writeFile(join(raiz, 'pacote.json'), '{}');
 
     await mkdir(join(raiz, 'dsg-workspace'));
     await writeFile(
@@ -53,9 +56,25 @@ describe('varrerFontes', () => {
     const caminhos = resultado.arquivos.map((a) => a.caminhoAbsoluto).sort();
 
     expect(caminhos).toEqual(
-      [join(raiz, 'docker-compose.yml'), join(raiz, 'normal.md')].sort(),
+      [join(raiz, 'anotacoes.txt'), join(raiz, 'normal.md')].sort(),
     );
     expect(resultado.recusadosPelaDenylist).toBe(2);
+  });
+
+  it('não recolhe mais código-fonte nem configuração — só texto e pdf', async () => {
+    const negados = NEGADOS_PADRAO.split(',');
+
+    await writeFile(join(raiz, 'manual.pdf'), '%PDF-1.4\n');
+
+    const resultado = await varrerFontes([raiz], negados);
+    const nomes = resultado.arquivos.map((a) => basename(a.caminhoAbsoluto));
+
+    expect(nomes.sort()).toEqual(
+      ['anotacoes.txt', 'manual.pdf', 'normal.md'].sort(),
+    );
+    expect(nomes).not.toContain('servico.ts');
+    expect(nomes).not.toContain('pacote.json');
+    expect(nomes).not.toContain('docker-compose.yml');
   });
 
   it('varre as fontes efetivas do ConfiguracaoService, não as do ENV', async () => {
@@ -81,7 +100,7 @@ describe('varrerFontes', () => {
     const resultado = await new VarreduraService(config, configuracao).varrer();
 
     expect(resultado.arquivos.map((a) => a.caminhoAbsoluto).sort()).toEqual(
-      [join(raiz, 'docker-compose.yml'), join(raiz, 'normal.md')].sort(),
+      [join(raiz, 'anotacoes.txt'), join(raiz, 'normal.md')].sort(),
     );
   });
 });
@@ -107,7 +126,7 @@ describe('preverFonte', () => {
     await writeFile(join(raiz, 'imagem.png'), 'não casa com padrão permitido');
     await writeFile(join(raiz, 'vazio.md'), '');
     await writeFile(
-      join(raiz, 'dados.json'),
+      join(raiz, 'dados.txt'),
       Buffer.from([0x7b, 0x00, 0x7d, 0x0a]),
     );
 
@@ -119,15 +138,15 @@ describe('preverFonte', () => {
 
     const previa = await preverFonte(raiz, negados);
 
-    expect(previa.arquivosElegiveis).toBe(3);
-    expect(previa.porExtensao).toEqual({ '.md': 2, '.ts': 1 });
+    expect(previa.arquivosElegiveis).toBe(2);
+    expect(previa.porExtensao).toEqual({ '.md': 2 });
     expect(previa.motivosDeRecusa).toEqual({
       denylist: 1,
-      extensao: 1,
+      extensao: 2,
       vazio: 1,
       binario: 1,
     });
-    expect(previa.arquivosRecusados).toBe(4);
+    expect(previa.arquivosRecusados).toBe(5);
     expect(previa.truncada).toBe(false);
     expect(previa.bytesTotais).toBeGreaterThan(0);
   });

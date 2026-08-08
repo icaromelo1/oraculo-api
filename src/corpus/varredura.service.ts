@@ -8,20 +8,7 @@ import { OraculoConfig } from '../config/config.service';
 import { ConfiguracaoService } from '../config/configuracao.service';
 import { caminhoNegado, casaAlgumPadrao } from './denylist';
 
-const NOMES_PERMITIDOS = [
-  '*.md',
-  '*.yml',
-  '*.yaml',
-  '*.conf',
-  '*.json',
-  '*.ts',
-  '*.js',
-  '*.sh',
-  'Dockerfile',
-  'Dockerfile.*',
-  'docker-compose*.yml',
-  'docker-compose*.yaml',
-];
+const NOMES_PERMITIDOS = ['*.md', '*.txt', '*.pdf'];
 
 const PADROES_PERMITIDOS = NOMES_PERMITIDOS.map((nome) => `**/${nome}`);
 
