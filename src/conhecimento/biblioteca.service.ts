@@ -97,6 +97,14 @@ export class BibliotecaService {
       });
     }
 
+    if (filtro.modulo === 'nenhum') {
+      consulta.andWhere('documento.moduloId IS NULL');
+    } else if (filtro.modulo !== undefined) {
+      consulta.andWhere('documento.moduloId = :modulo', {
+        modulo: filtro.modulo,
+      });
+    }
+
     const pastaReal = this.pastaParaFiltro(filtro.pasta);
 
     if (pastaReal) {

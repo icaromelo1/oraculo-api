@@ -10,7 +10,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import {
   AlvoBanco,
   CapacidadeInstalacao,
@@ -795,6 +795,12 @@ export class ConfiguracaoService implements OnModuleInit {
       ? await this.exigirDocumento(documentoId)
       : null;
 
+    if (documento && documento.moduloId !== moduloId) {
+      throw new BadRequestException(
+        `"${documento.titulo}" não pertence ao módulo "${modulo.nome}" — mova o documento para o módulo antes de torná-lo a capa`,
+      );
+    }
+
     await this.tabelaDeModulos.update(
       { id: moduloId },
       { especialistaDocumentoId: documento?.id ?? null },
@@ -841,6 +847,13 @@ export class ConfiguracaoService implements OnModuleInit {
     const resultado = await this.documentos.update(
       { id: In(alvos) },
       { moduloId: modulo?.id ?? null },
+    );
+
+    await this.tabelaDeModulos.update(
+      modulo
+        ? { especialistaDocumentoId: In(alvos), id: Not(modulo.id) }
+        : { especialistaDocumentoId: In(alvos) },
+      { especialistaDocumentoId: null },
     );
 
     await this.invalidar();

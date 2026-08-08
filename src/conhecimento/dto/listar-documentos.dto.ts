@@ -20,6 +20,7 @@ export class ListarDocumentosDto {
   busca?: string;
   fonte?: Fonte;
   autoridade?: number;
+  modulo?: string;
   pasta?: string;
   recursivo: boolean = true;
   pagina: number = PAGINA_PADRAO;
@@ -78,6 +79,23 @@ function lerPasta(valor: unknown): string | undefined {
   return texto;
 }
 
+const PADRAO_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function lerModulo(valor: unknown): string | undefined {
+  const texto = lerTexto(valor);
+
+  if (texto === undefined) return undefined;
+
+  if (texto !== 'nenhum' && !PADRAO_UUID.test(texto)) {
+    throw new BadRequestException(
+      '"modulo" precisa ser o id de um módulo ou "nenhum"',
+    );
+  }
+
+  return texto;
+}
+
 function lerBooleano(valor: unknown, padrao: boolean): boolean {
   if (valor === undefined || valor === null || valor === '') return padrao;
   if (valor === true || valor === 'true') return true;
@@ -109,6 +127,7 @@ export function validarListarDocumentosDto(
   }
 
   dto.autoridade = lerAutoridade(corpo.autoridade);
+  dto.modulo = lerModulo(corpo.modulo);
   dto.pagina = lerInteiro(corpo.pagina, PAGINA_PADRAO, 'pagina');
   dto.porPagina = Math.min(
     lerInteiro(corpo.porPagina, POR_PAGINA_PADRAO, 'porPagina'),

@@ -46,6 +46,10 @@ function casaCriterio(item: ComId, where: Record<string, unknown>): boolean {
     const atual = (item as Record<string, unknown>)[chave];
 
     if (valor instanceof FindOperator) {
+      if (valor.type === 'not') {
+        return atual !== valor.value;
+      }
+
       return (valor.value as unknown[]).includes(atual);
     }
 
@@ -1241,6 +1245,8 @@ describe('ConfiguracaoService — módulos de conhecimento', () => {
       descricao: 'servidores e deploy',
     });
 
+    await servico.moverDocumentos(['doc-1'], modulo.id);
+
     const comCapa = await servico.definirEspecialista(modulo.id, 'doc-1');
 
     expect(comCapa.especialistaDocumentoId).toBe('doc-1');
@@ -1248,6 +1254,63 @@ describe('ConfiguracaoService — módulos de conhecimento', () => {
     const semCapa = await servico.definirEspecialista(modulo.id, null);
 
     expect(semCapa.especialistaDocumentoId).toBeNull();
+  });
+
+  it('recusa como capa um documento que não pertence ao módulo', async () => {
+    const { servico, modulos } = montar(
+      {},
+      {
+        documentos: [
+          { id: 'doc-1', titulo: 'user.entity.ts', moduloId: null },
+          { id: 'doc-2', titulo: 'da casa', moduloId: null },
+        ],
+      },
+    );
+
+    const modulo = await servico.criarModulo({
+      nome: 'memoria',
+      descricao: 'decisões e regras do dono',
+    });
+
+    await servico.moverDocumentos(['doc-2'], modulo.id);
+
+    await expect(
+      servico.definirEspecialista(modulo.id, 'doc-1'),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(modulos.dados[0].especialistaDocumentoId).toBeNull();
+  });
+
+  it('tirar a capa do módulo limpa o ponteiro, mas movê-la dentro do módulo não', async () => {
+    const { servico, modulos } = montar(
+      {},
+      {
+        documentos: [
+          { id: 'doc-1', titulo: 'capa', moduloId: null },
+          { id: 'doc-2', titulo: 'outro', moduloId: null },
+        ],
+      },
+    );
+
+    const origem = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+    const destino = await servico.criarModulo({
+      nome: 'memoria',
+      descricao: 'decisões do dono',
+    });
+
+    await servico.moverDocumentos(['doc-1', 'doc-2'], origem.id);
+    await servico.definirEspecialista(origem.id, 'doc-1');
+
+    await servico.moverDocumentos(['doc-2'], origem.id);
+
+    expect(modulos.dados[0].especialistaDocumentoId).toBe('doc-1');
+
+    await servico.moverDocumentos(['doc-1'], destino.id);
+
+    expect(modulos.dados[0].especialistaDocumentoId).toBeNull();
   });
 
   it('recusa documento-capa que não está indexado', async () => {

@@ -227,6 +227,33 @@ describe('BibliotecaService.listar', () => {
     expect(primeiro.caminhoReal).toBe(join(corpus, 'guia.md'));
   });
 
+  it('filtra por módulo e pelos que estão sem módulo', async () => {
+    const { servico, consulta } = montar([]);
+
+    await servico.listar(validarListarDocumentosDto({ modulo: UUID_NOTA }));
+
+    expect(consulta.andWhere).toHaveBeenCalledWith(
+      'documento.moduloId = :modulo',
+      { modulo: UUID_NOTA },
+    );
+
+    const semModulo = montar([]);
+
+    await semModulo.servico.listar(
+      validarListarDocumentosDto({ modulo: 'nenhum' }),
+    );
+
+    expect(semModulo.consulta.andWhere).toHaveBeenCalledWith(
+      'documento.moduloId IS NULL',
+    );
+  });
+
+  it('recusa filtro de módulo que não é id nem "nenhum"', () => {
+    expect(() => validarListarDocumentosDto({ modulo: 'infra' })).toThrow(
+      BadRequestException,
+    );
+  });
+
   it('devolve módulo e descrição para a tela reler o que salvou', async () => {
     const { servico } = montar([
       documento({ moduloId: UUID_NOTA, descricao: 'passo a passo do backup' }),
