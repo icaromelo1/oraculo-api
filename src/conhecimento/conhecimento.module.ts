@@ -3,20 +3,23 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfiguracaoModule } from '../config/configuracao.module';
 import { CorpusModule } from '../corpus/corpus.module';
 import { Documento, Trecho } from '../database/entities';
+import { ProvidersModule } from '../providers/providers.module';
 import { SecurityModule } from '../security/security.module';
 import { BibliotecaService } from './biblioteca.service';
 import { ConhecimentoController } from './conhecimento.controller';
 import { ConhecimentoService } from './conhecimento.service';
+import { SugestaoDescricaoService } from './sugestao-descricao.service';
 
 @Module({
   imports: [
     ConfiguracaoModule,
     CorpusModule,
+    ProvidersModule,
     SecurityModule,
     TypeOrmModule.forFeature([Documento, Trecho]),
   ],
   controllers: [ConhecimentoController],
-  providers: [BibliotecaService, ConhecimentoService],
-  exports: [ConhecimentoService],
+  providers: [BibliotecaService, ConhecimentoService, SugestaoDescricaoService],
+  exports: [ConhecimentoService, SugestaoDescricaoService],
 })
 export class ConhecimentoModule {}

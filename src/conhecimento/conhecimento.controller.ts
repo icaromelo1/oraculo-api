@@ -37,6 +37,11 @@ import { CriarNotaDto } from './dto/criar-nota.dto';
 import { EditarNotaDto } from './dto/editar-nota.dto';
 import { validarListarDocumentosDto } from './dto/listar-documentos.dto';
 import { SlugNotaDto } from './dto/slug-nota.dto';
+import { validarSugerirDescricaoDto } from './dto/sugerir-descricao.dto';
+import {
+  SugestaoDeDescricao,
+  SugestaoDescricaoService,
+} from './sugestao-descricao.service';
 
 const CAMPO_DO_ARQUIVO = 'arquivo';
 
@@ -46,7 +51,14 @@ export class ConhecimentoController {
     private readonly conhecimento: ConhecimentoService,
     private readonly biblioteca: BibliotecaService,
     private readonly configuracao: ConfiguracaoService,
+    private readonly sugestao: SugestaoDescricaoService,
   ) {}
+
+  @HttpCode(200)
+  @Post('sugerir-descricao')
+  sugerirDescricao(@Body() corpo: unknown): Promise<SugestaoDeDescricao> {
+    return this.sugestao.sugerir(validarSugerirDescricaoDto(corpo));
+  }
 
   @Get('pastas')
   pastas() {

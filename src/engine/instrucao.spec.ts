@@ -82,10 +82,16 @@ describe('persona da instalacao', () => {
 describe('os blocos fixos nao tem caminho de escrita', () => {
   it('nao exporta os blocos fixos, entao ninguem consegue importar e trocar', () => {
     expect(Object.keys(instrucao).sort()).toEqual([
+      'DADO_INERTE',
       'TETO_DA_PERSONA',
       'montarSistema',
       'truncarPersona',
     ]);
+  });
+
+  it('o bloco exportado e leitura, nao ponto de troca — quem importa recebe o texto fixo', () => {
+    expect(instrucao.DADO_INERTE).toContain(TITULO_DADO_INERTE);
+    expect(instrucao.DADO_INERTE).toContain(LINHA_DO_DADO_INERTE);
   });
 
   it('so instrucao.ts escreve os blocos fixos em todo o codigo de producao', () => {

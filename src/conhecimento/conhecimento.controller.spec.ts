@@ -3,19 +3,24 @@ import type { ConfiguracaoService } from '../config/configuracao.service';
 import type { BibliotecaService } from './biblioteca.service';
 import { ConhecimentoController } from './conhecimento.controller';
 import type { ConhecimentoService } from './conhecimento.service';
+import type { SugestaoDescricaoService } from './sugestao-descricao.service';
 
 function montar() {
   const descrever = jest.fn((id: string, descricao: string) =>
     Promise.resolve({ id, descricao: descricao || null }),
+  );
+  const sugerir = jest.fn(() =>
+    Promise.resolve({ sugestao: 'uma frase curta' }),
   );
 
   const controller = new ConhecimentoController(
     {} as unknown as ConhecimentoService,
     {} as unknown as BibliotecaService,
     { descreverDocumento: descrever } as unknown as ConfiguracaoService,
+    { sugerir } as unknown as SugestaoDescricaoService,
   );
 
-  return { controller, descrever };
+  return { controller, descrever, sugerir };
 }
 
 const requisicao = { usuario: { id: 'u1' } } as never;
@@ -75,5 +80,29 @@ describe('ConhecimentoController — descrição de documento', () => {
     expect(() =>
       controller.descreverDocumento('doc-1', { descricao: 42 }, requisicao),
     ).toThrow(BadRequestException);
+  });
+});
+
+describe('ConhecimentoController — sugestão de descrição', () => {
+  it('repassa conteúdo e título validados ao serviço', async () => {
+    const { controller, sugerir } = montar();
+
+    await controller.sugerirDescricao({
+      conteudo: 'texto do documento',
+      titulo: '  guia do kairos  ',
+    });
+
+    expect(sugerir).toHaveBeenCalledWith({
+      conteudo: 'texto do documento',
+      titulo: 'guia do kairos',
+    });
+  });
+
+  it('recusa conteúdo que não é texto', () => {
+    const { controller } = montar();
+
+    expect(() => controller.sugerirDescricao({ conteudo: 42 })).toThrow(
+      BadRequestException,
+    );
   });
 });
