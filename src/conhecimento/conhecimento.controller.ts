@@ -1,10 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -14,6 +16,10 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
+import {
+  ConfiguracaoService,
+  type DescricaoDeDocumento,
+} from '../config/configuracao.service';
 import {
   BibliotecaService,
   DocumentoAberto,
@@ -39,6 +45,7 @@ export class ConhecimentoController {
   constructor(
     private readonly conhecimento: ConhecimentoService,
     private readonly biblioteca: BibliotecaService,
+    private readonly configuracao: ConfiguracaoService,
   ) {}
 
   @Get('pastas')
@@ -54,6 +61,29 @@ export class ConhecimentoController {
   @Get('documentos/:id')
   abrirDocumento(@Param('id') id: string): Promise<DocumentoAberto> {
     return this.biblioteca.abrir(id);
+  }
+
+  @Patch('documentos/:id')
+  descreverDocumento(
+    @Param('id') id: string,
+    @Body() corpo: unknown,
+    @Req() requisicao: RequisicaoAutenticada,
+  ): Promise<DescricaoDeDocumento> {
+    if (typeof corpo !== 'object' || corpo === null || Array.isArray(corpo)) {
+      throw new BadRequestException('corpo da requisição inválido');
+    }
+
+    const { descricao } = corpo as Record<string, unknown>;
+
+    if (descricao !== undefined && typeof descricao !== 'string') {
+      throw new BadRequestException('"descricao" precisa ser texto');
+    }
+
+    return this.configuracao.descreverDocumento(
+      id,
+      typeof descricao === 'string' ? descricao : '',
+      this.usuarioId(requisicao),
+    );
   }
 
   @Get('notas')
