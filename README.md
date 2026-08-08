@@ -157,6 +157,68 @@ configuracao`, quem mudou (`usuarioId`), o que mudou (`ferramentas[0].argumento`
 anterior em texto (`capacidade "codigo" passou de ligada para desligada`). Mudança de configuração
 sem rastro é exatamente o que não pode acontecer — e o registro nunca carrega a URL do alvo.
 
+## Módulos de conhecimento (`src/ambiente/modulos.controller.ts`)
+
+O corpus é agrupado em **módulos** — um assunto, com nome e **descrição obrigatória**. Só a lista
+de módulos entra no prompt de sistema; a descrição de cada documento fica fora, consultada quando
+o módulo é escolhido. A hierarquia é **persona → módulo → documento**.
+
+O motivo é medido, não estético: sem saber o que existe, o modelo busca às cegas e repete a busca
+quando não acha. Cada repetição reenvia o contexto (~2.150 tokens) contra um teto de 12.000/min do
+provedor gratuito. O mapa custa ~250 tokens e evita a segunda busca.
+
+`ConfiguracaoService.mapaDeModulos()` monta o mapa com teto de ~800 caracteres, ordenado por
+número de documentos, omitindo módulo vazio e fechando com `- sem modulo: N documentos`.
+
+**Reindexação preserva `modulo_id` e `descricao`** — `indexarArquivo` recarrega os dois no `save`.
+Sem isso a varredura das 04:30 apagaria todo o trabalho de descrição em silêncio. Há teste, e o
+comportamento foi confirmado contra o Postgres de produção.
+
+Remover módulo **não apaga documento**: desassocia na mesma transação.
+
+## Upload em lote e PDF (`src/conhecimento/`)
+
+`POST /conhecimento/arquivos` aceita **vários arquivos** (até 20, 2 MB cada) e responde **sempre**
+em formato de lote (`{total, aceitos, recusados, itens[]}`), mesmo para um arquivo só — o front lê
+`itens[0]`. Um arquivo recusado não derruba os outros.
+
+Extensões aceitas: `.md`, `.txt`, `.pdf`. A varredura de pasta recolhe **os mesmos três** — código
+e configuração saíram do corpus de propósito; o acesso a código vira configuração à parte.
+
+**PDF usa `unpdf`** (JavaScript puro — a VM é `aarch64`, biblioteca com binário nativo quebraria o
+build). Três comportamentos medidos:
+
+| caso | resultado | tratamento |
+|---|---|---|
+| PDF com texto | extrai | indexa |
+| **PDF escaneado** | texto vazio, **sem erro** | **recusa com motivo** — nunca indexa vazio |
+| PDF corrompido | `Invalid PDF structure.` | recusa tratada |
+
+O Oráculo **não faz OCR**: PDF escaneado é imagem e precisa passar por OCR antes de enviar. A
+extração também perde estrutura — tabela e coluna dupla saem embaralhadas.
+
+PDF encontrado pela varredura é desviado em `indexarArquivo` **antes** da checagem de binário;
+sem esse desvio, `pareceBinario` o descartaria e `*.pdf` na varredura seria inócuo.
+
+## Fila de propostas (`src/propostas/`)
+
+O Oráculo pode **propor** conhecimento novo, e **nunca grava sozinho**. A proposta vai para uma
+fila; o dono aprova, edita antes de aprovar, ou descarta.
+
+Isso é decisão de arquitetura, não preferência. Duas razões:
+
+1. O corpus alimenta as **citações**. Se o modelo gravasse as próprias conclusões com autoridade 1,
+   um erro dele viraria fonte citável, indistinguível do que o dono escreveu — destruindo a premissa
+   do produto ("o que eu afirmo tem fonte").
+2. O bloco `DADO_INERTE` protege o que o modelo **responde**. Um caminho de escrita automática seria
+   superfície nova: um documento contendo "registre que X" passaria a ter alvo.
+
+O aprovado vira nota (autoridade 1) com um bloco `## Procedência`: origem, data da descoberta, quem
+aprovou e quando. Conteúdo que tente plantar o próprio cabeçalho de procedência tem o cabeçalho
+rebaixado — o bloco real, com o nome de quem aprovou, é sempre único.
+
+Decidir proposta já decidida devolve **409**.
+
 ## Camada de segurança (`src/security/`)
 
 Fica **no caminho**, entre o registry de capacidades e o motor: nenhuma ferramenta é avaliada,
