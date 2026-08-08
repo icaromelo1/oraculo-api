@@ -1,4 +1,12 @@
-import { Check, Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Check,
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+import { Modulo } from './modulo.entity';
 
 @Entity('documento')
 @Check('"autoridade" >= 1 AND "autoridade" <= 4')
@@ -26,4 +34,14 @@ export class Documento {
 
   @Column({ type: 'jsonb', nullable: true })
   meta: Record<string, unknown> | null;
+
+  @Column({ type: 'uuid', name: 'modulo_id', nullable: true })
+  moduloId: string | null;
+
+  @ManyToOne(() => Modulo, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'modulo_id' })
+  modulo: Modulo | null;
+
+  @Column({ type: 'text', nullable: true })
+  descricao: string | null;
 }

@@ -10,11 +10,13 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   AlvoBanco,
   CapacidadeInstalacao,
+  Documento,
   FonteConhecimento,
+  Modulo,
   NomeCapacidadeInstalacao,
   ProvedorModelo,
   ServicoObservavel,
@@ -152,12 +154,52 @@ export interface NovoProvedor {
   dialeto?: string;
 }
 
+export interface ModuloResumido {
+  id: string;
+  nome: string;
+  descricao: string;
+  especialistaDocumentoId: string | null;
+  documentos: number;
+  criadoEm: Date;
+}
+
+export interface NovoModulo {
+  nome: string;
+  descricao: string;
+}
+
+export interface EdicaoDeModulo {
+  nome?: string;
+  descricao?: string;
+}
+
+export interface MudancaDeModulo {
+  movidos: number;
+  moduloId: string | null;
+}
+
+export interface DescricaoDeDocumento {
+  id: string;
+  descricao: string | null;
+}
+
+export const TETO_DO_MAPA_DE_MODULOS = 800;
+
+const TETO_DA_LINHA_DO_MAPA = 200;
+const TETO_DA_DESCRICAO_NO_MAPA = 120;
+
+interface ContagemPorModulo {
+  porModulo: Map<string, number>;
+  semModulo: number;
+}
+
 interface Instantaneo {
   capacidades: CapacidadeEfetiva[];
   fontes: FonteEfetiva[];
   alvos: AlvoBanco[];
   servicos: ServicoObservavel[];
   provedores: ProvedorModelo[];
+  modulos: Modulo[];
 }
 
 @Injectable()
@@ -182,6 +224,10 @@ export class ConfiguracaoService implements OnModuleInit {
     private readonly servicos: Repository<ServicoObservavel>,
     @InjectRepository(ProvedorModelo)
     private readonly modelos: Repository<ProvedorModelo>,
+    @InjectRepository(Modulo)
+    private readonly tabelaDeModulos: Repository<Modulo>,
+    @InjectRepository(Documento)
+    private readonly documentos: Repository<Documento>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -625,6 +671,369 @@ export class ConfiguracaoService implements OnModuleInit {
     );
   }
 
+  async modulos(): Promise<ModuloResumido[]> {
+    const [instantaneo, contagem] = await Promise.all([
+      this.estado(),
+      this.contarDocumentosPorModulo(),
+    ]);
+
+    return instantaneo.modulos
+      .slice()
+      .sort((um, outro) => um.nome.localeCompare(outro.nome))
+      .map((modulo) =>
+        this.resumirModulo(modulo, contagem.porModulo.get(modulo.id) ?? 0),
+      );
+  }
+
+  async criarModulo(
+    novo: NovoModulo,
+    usuarioId?: string | null,
+  ): Promise<ModuloResumido> {
+    const nome = this.exigirNomeDeModulo(novo.nome);
+    const descricao = this.exigirDescricaoDeModulo(novo.descricao);
+
+    await this.exigirNomeLivre(nome);
+
+    const salvo = await this.tabelaDeModulos.save(
+      this.tabelaDeModulos.create({
+        nome,
+        descricao,
+        especialistaDocumentoId: null,
+        criadoPor: this.referenciaUsuario(usuarioId),
+      }),
+    );
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.modulo.criar',
+      { id: salvo.id, nome, descricao },
+      `módulo "${nome}" criado (antes: inexistente)`,
+    );
+
+    return this.resumirModulo(salvo, 0);
+  }
+
+  async atualizarModulo(
+    id: string,
+    edicao: EdicaoDeModulo,
+    usuarioId?: string | null,
+  ): Promise<ModuloResumido> {
+    const existente = await this.exigirModulo(id);
+
+    const nome =
+      edicao.nome === undefined
+        ? existente.nome
+        : this.exigirNomeDeModulo(edicao.nome);
+    const descricao =
+      edicao.descricao === undefined
+        ? this.exigirDescricaoDeModulo(existente.descricao)
+        : this.exigirDescricaoDeModulo(edicao.descricao);
+
+    if (nome !== existente.nome) {
+      await this.exigirNomeLivre(nome);
+    }
+
+    await this.tabelaDeModulos.update({ id }, { nome, descricao });
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.modulo.atualizar',
+      { id, nome, descricao },
+      `módulo "${nome}" atualizado (antes: "${existente.nome}" — ${existente.descricao})`,
+    );
+
+    const contagem = await this.contarDocumentosPorModulo();
+
+    return this.resumirModulo(
+      { ...existente, nome, descricao },
+      contagem.porModulo.get(id) ?? 0,
+    );
+  }
+
+  async removerModulo(id: string, usuarioId?: string | null): Promise<void> {
+    const existente = await this.exigirModulo(id);
+    const contagem = await this.contarDocumentosPorModulo();
+    const desassociados = contagem.porModulo.get(id) ?? 0;
+
+    await this.tabelaDeModulos.manager.transaction(async (gerenciador) => {
+      await gerenciador.update(Documento, { moduloId: id }, { moduloId: null });
+      await gerenciador.delete(Modulo, { id });
+    });
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.modulo.remover',
+      { id, nome: existente.nome, desassociados },
+      `módulo "${existente.nome}" removido, deixando ${desassociados} ${this.plural(
+        desassociados,
+      )} sem módulo (antes: ${existente.descricao})`,
+    );
+  }
+
+  async definirEspecialista(
+    moduloId: string,
+    documentoId: string | null,
+    usuarioId?: string | null,
+  ): Promise<ModuloResumido> {
+    const modulo = await this.exigirModulo(moduloId);
+    const documento = documentoId
+      ? await this.exigirDocumento(documentoId)
+      : null;
+
+    await this.tabelaDeModulos.update(
+      { id: moduloId },
+      { especialistaDocumentoId: documento?.id ?? null },
+    );
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.modulo.especialista',
+      { id: moduloId, documentoId: documento?.id ?? null },
+      `documento-capa do módulo "${modulo.nome}" passou de ${
+        modulo.especialistaDocumentoId ?? 'nenhum'
+      } para ${documento ? `"${documento.titulo}"` : 'nenhum'}`,
+    );
+
+    const contagem = await this.contarDocumentosPorModulo();
+
+    return this.resumirModulo(
+      { ...modulo, especialistaDocumentoId: documento?.id ?? null },
+      contagem.porModulo.get(moduloId) ?? 0,
+    );
+  }
+
+  async moverDocumentos(
+    ids: string[],
+    moduloId: string | null,
+    usuarioId?: string | null,
+  ): Promise<MudancaDeModulo> {
+    const alvos = [
+      ...new Set(
+        (ids ?? []).map((item) => String(item).trim()).filter(Boolean),
+      ),
+    ];
+
+    if (alvos.length === 0) {
+      throw new BadRequestException(
+        'informe ao menos um documento para mover de módulo',
+      );
+    }
+
+    const modulo = moduloId ? await this.exigirModulo(moduloId) : null;
+
+    const resultado = await this.documentos.update(
+      { id: In(alvos) },
+      { moduloId: modulo?.id ?? null },
+    );
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.modulo.mover',
+      { documentos: alvos, moduloId: modulo?.id ?? null },
+      `módulo de ${alvos.length} ${this.plural(alvos.length)} passou para ${
+        modulo ? `"${modulo.nome}"` : 'nenhum'
+      }`,
+    );
+
+    return {
+      movidos: resultado.affected ?? 0,
+      moduloId: modulo?.id ?? null,
+    };
+  }
+
+  async descreverDocumento(
+    id: string,
+    descricao: string,
+    usuarioId?: string | null,
+  ): Promise<DescricaoDeDocumento> {
+    const documento = await this.exigirDocumento(id);
+    const nova = typeof descricao === 'string' ? descricao.trim() : '';
+
+    await this.documentos.update(
+      { id: documento.id },
+      { descricao: nova || null },
+    );
+
+    await this.invalidar();
+
+    await this.auditar(
+      usuarioId,
+      'ambiente.documento.descrever',
+      { id: documento.id, descricao: nova || null },
+      `descrição do documento "${documento.titulo}" passou de ${
+        documento.descricao ? `"${documento.descricao}"` : 'vazia'
+      } para ${nova ? `"${nova}"` : 'vazia'}`,
+    );
+
+    return { id: documento.id, descricao: nova || null };
+  }
+
+  async mapaDeModulos(): Promise<string> {
+    const [instantaneo, contagem] = await Promise.all([
+      this.estado(),
+      this.contarDocumentosPorModulo(),
+    ]);
+
+    const povoados = instantaneo.modulos
+      .map((modulo) => ({
+        modulo,
+        total: contagem.porModulo.get(modulo.id) ?? 0,
+      }))
+      .filter((item) => item.total > 0)
+      .sort(
+        (um, outro) =>
+          outro.total - um.total ||
+          um.modulo.nome.localeCompare(outro.modulo.nome),
+      );
+
+    const rodape =
+      contagem.semModulo > 0
+        ? `- sem modulo: ${contagem.semModulo} ${this.plural(contagem.semModulo)}`
+        : '';
+
+    const teto = TETO_DO_MAPA_DE_MODULOS - (rodape ? rodape.length + 1 : 0);
+    const linhas: string[] = [];
+    let tamanho = 0;
+
+    for (const item of povoados) {
+      const linha = this.linhaDoMapa(item.modulo, item.total);
+      const custo = linhas.length === 0 ? linha.length : linha.length + 1;
+
+      if (tamanho + custo > teto) break;
+
+      linhas.push(linha);
+      tamanho += custo;
+    }
+
+    if (rodape) {
+      linhas.push(rodape);
+    }
+
+    return linhas.join('\n');
+  }
+
+  private linhaDoMapa(modulo: Modulo, total: number): string {
+    const descricao = this.encurtar(
+      modulo.descricao,
+      TETO_DA_DESCRICAO_NO_MAPA,
+    );
+
+    return this.encurtar(
+      `- ${modulo.nome}: ${descricao} (${total} ${this.plural(total)})`,
+      TETO_DA_LINHA_DO_MAPA,
+    );
+  }
+
+  private encurtar(texto: string, teto: number): string {
+    const limpo = String(texto ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return limpo.length <= teto
+      ? limpo
+      : `${limpo.slice(0, teto - 1).trimEnd()}…`;
+  }
+
+  private plural(total: number): string {
+    return total === 1 ? 'documento' : 'documentos';
+  }
+
+  private resumirModulo(modulo: Modulo, documentos: number): ModuloResumido {
+    return {
+      id: modulo.id,
+      nome: modulo.nome,
+      descricao: modulo.descricao,
+      especialistaDocumentoId: modulo.especialistaDocumentoId ?? null,
+      documentos,
+      criadoEm: modulo.criadoEm,
+    };
+  }
+
+  private exigirNomeDeModulo(bruto: unknown): string {
+    const nome = typeof bruto === 'string' ? bruto.trim() : '';
+
+    if (!nome) {
+      throw new BadRequestException('o módulo precisa de um nome');
+    }
+
+    return nome;
+  }
+
+  private exigirDescricaoDeModulo(bruta: unknown): string {
+    const descricao = typeof bruta === 'string' ? bruta.trim() : '';
+
+    if (!descricao) {
+      throw new BadRequestException(
+        'o módulo precisa de uma descrição — é ela que diz ao modelo o que existe ali dentro, e um módulo sem descrição não entra no mapa',
+      );
+    }
+
+    return descricao;
+  }
+
+  private async exigirNomeLivre(nome: string): Promise<void> {
+    const jaExiste = await this.tabelaDeModulos.findOne({ where: { nome } });
+
+    if (jaExiste) {
+      throw new ConflictException(`já existe um módulo chamado "${nome}"`);
+    }
+  }
+
+  private async exigirModulo(id: string): Promise<Modulo> {
+    const modulo = await this.tabelaDeModulos.findOne({ where: { id } });
+
+    if (!modulo) {
+      throw new NotFoundException(`módulo "${id}" não existe`);
+    }
+
+    return modulo;
+  }
+
+  private async exigirDocumento(id: string): Promise<Documento> {
+    const documento = await this.documentos.findOne({ where: { id } });
+
+    if (!documento) {
+      throw new NotFoundException(`documento "${id}" não está indexado`);
+    }
+
+    return documento;
+  }
+
+  private async contarDocumentosPorModulo(): Promise<ContagemPorModulo> {
+    const linhas = await this.documentos
+      .createQueryBuilder('documento')
+      .select('documento.moduloId', 'moduloId')
+      .addSelect('COUNT(*)', 'total')
+      .groupBy('documento.moduloId')
+      .getRawMany<{ moduloId: string | null; total: number | string }>();
+
+    const porModulo = new Map<string, number>();
+    let semModulo = 0;
+
+    for (const linha of linhas) {
+      const total = Number(linha.total);
+
+      if (linha.moduloId) {
+        porModulo.set(linha.moduloId, total);
+        continue;
+      }
+
+      semModulo += total;
+    }
+
+    return { porModulo, semModulo };
+  }
+
   private escolherAtivo(provedores: ProvedorModelo[]): ProvedorAtivo | null {
     const ativo = provedores
       .slice()
@@ -850,13 +1259,15 @@ export class ConfiguracaoService implements OnModuleInit {
   }
 
   private async carregar(): Promise<Instantaneo> {
-    const [linhas, fontes, alvos, servicos, provedores] = await Promise.all([
-      this.capacidades.find(),
-      this.fontes.find(),
-      this.alvos.find(),
-      this.servicos.find(),
-      this.modelos.find(),
-    ]);
+    const [linhas, fontes, alvos, servicos, provedores, modulos] =
+      await Promise.all([
+        this.capacidades.find(),
+        this.fontes.find(),
+        this.alvos.find(),
+        this.servicos.find(),
+        this.modelos.find(),
+        this.tabelaDeModulos.find(),
+      ]);
 
     return {
       capacidades: this.consolidarCapacidades(linhas),
@@ -864,6 +1275,7 @@ export class ConfiguracaoService implements OnModuleInit {
       alvos,
       servicos,
       provedores,
+      modulos,
     };
   }
 

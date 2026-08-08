@@ -8,7 +8,9 @@ import { ConfiguracaoService } from '../config/configuracao.service';
 import {
   AlvoBanco,
   CapacidadeInstalacao,
+  Documento,
   FonteConhecimento,
+  Modulo,
   ProvedorModelo,
   ServicoObservavel,
   TipoProvedorModelo,
@@ -181,6 +183,8 @@ function montar(
   const alvos = criarRepositorio<AlvoBanco>();
   const servicos = criarRepositorio<ServicoObservavel>();
   const modelos = criarRepositorio<ProvedorModelo>(opcoes.modelos ?? []);
+  const modulos = criarRepositorio<Modulo>();
+  const documentos = criarRepositorio<Documento>();
 
   const configuracao = new ConfiguracaoService(
     config,
@@ -191,6 +195,8 @@ function montar(
     alvos as unknown as Repository<AlvoBanco>,
     servicos as unknown as Repository<ServicoObservavel>,
     modelos as unknown as Repository<ProvedorModelo>,
+    modulos as unknown as Repository<Modulo>,
+    documentos as unknown as Repository<Documento>,
   );
 
   const fabrica = jest.fn<LlmProvider, [ConfigDoProvedor]>(

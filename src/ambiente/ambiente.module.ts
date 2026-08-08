@@ -6,6 +6,7 @@ import { criarLlmProviderDe } from '../providers/provider.factory';
 import { SecurityModule } from '../security/security.module';
 import { AmbienteController } from './ambiente.controller';
 import { AmbienteService } from './ambiente.service';
+import { ModulosController } from './modulos.controller';
 import { ProvedoresController } from './provedores.controller';
 import {
   FABRICA_DE_PROVEDOR,
@@ -18,7 +19,7 @@ import {
     SecurityModule,
     TypeOrmModule.forFeature([Documento, ProvedorModelo]),
   ],
-  controllers: [AmbienteController, ProvedoresController],
+  controllers: [AmbienteController, ModulosController, ProvedoresController],
   providers: [
     AmbienteService,
     TesteDeProvedorService,

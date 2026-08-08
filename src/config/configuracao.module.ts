@@ -3,7 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   AlvoBanco,
   CapacidadeInstalacao,
+  Documento,
   FonteConhecimento,
+  Modulo,
   ProvedorModelo,
   ServicoObservavel,
 } from '../database/entities';
@@ -21,6 +23,8 @@ import { ConfiguracaoService } from './configuracao.service';
       AlvoBanco,
       ServicoObservavel,
       ProvedorModelo,
+      Modulo,
+      Documento,
     ]),
   ],
   providers: [CifraService, ConfiguracaoService],

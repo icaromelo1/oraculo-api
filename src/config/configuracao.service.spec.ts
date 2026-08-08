@@ -13,12 +13,15 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { FindOperator, Repository } from 'typeorm';
 import {
   AlvoBanco,
   CapacidadeInstalacao,
+  Documento,
   FonteConhecimento,
+  Modulo,
   ProvedorModelo,
   ServicoObservavel,
   TipoProvedorModelo,
@@ -26,45 +29,87 @@ import {
 import { SecurityService } from '../security/security.service';
 import { CifraService } from './cifra.service';
 import { OraculoConfig } from './config.service';
-import { ConfiguracaoService } from './configuracao.service';
+import {
+  ConfiguracaoService,
+  TETO_DO_MAPA_DE_MODULOS,
+} from './configuracao.service';
 
 interface ComId {
   id?: string;
 }
 
-function criarRepositorio<T extends ComId>(inicial: T[] = []) {
+const ROTAS = new Map<unknown, { dados: ComId[] }>();
+
+function casaCriterio(item: ComId, where: Record<string, unknown>): boolean {
+  return Object.entries(where).every(([chave, valor]) => {
+    const atual = (item as Record<string, unknown>)[chave];
+
+    if (valor instanceof FindOperator) {
+      return (valor.value as unknown[]).includes(atual);
+    }
+
+    return atual === valor;
+  });
+}
+
+function criarRepositorio<T extends ComId>(
+  inicial: T[] = [],
+  entidade?: unknown,
+) {
   const dados: T[] = inicial.map((item) => ({
     id: item.id ?? randomUUID(),
     ...item,
   }));
 
   const casa = (item: T, where: Record<string, unknown>) =>
-    Object.entries(where).every(
-      ([chave, valor]) => (item as Record<string, unknown>)[chave] === valor,
-    );
+    casaCriterio(item, where);
+
+  const alvo = (entidadeAlvo: unknown): ComId[] =>
+    ROTAS.get(entidadeAlvo)?.dados ?? dados;
+
+  const aplicar = (
+    linhas: ComId[],
+    criterio: Record<string, unknown>,
+    patch: Record<string, unknown>,
+  ) => {
+    let afetados = 0;
+
+    linhas.forEach((item, indice) => {
+      if (!casaCriterio(item, criterio)) return;
+
+      linhas[indice] = { ...item, ...patch };
+      afetados += 1;
+    });
+
+    return afetados;
+  };
 
   const gerenciador = {
     update: jest.fn(
       (
-        _entidade: unknown,
+        entidadeAlvo: unknown,
         criterio: Record<string, unknown>,
         patch: Record<string, unknown>,
-      ) => {
-        let afetados = 0;
+      ) =>
+        Promise.resolve({
+          affected: aplicar(alvo(entidadeAlvo), criterio, patch),
+        }),
+    ),
+    delete: jest.fn(
+      (entidadeAlvo: unknown, criterio: Record<string, unknown>) => {
+        const linhas = alvo(entidadeAlvo);
+        const indice = linhas.findIndex((item) => casaCriterio(item, criterio));
 
-        dados.forEach((item, indice) => {
-          if (!casa(item, criterio)) return;
+        if (indice >= 0) {
+          linhas.splice(indice, 1);
+        }
 
-          dados[indice] = { ...item, ...patch };
-          afetados += 1;
-        });
-
-        return Promise.resolve({ affected: afetados });
+        return Promise.resolve({ affected: indice >= 0 ? 1 : 0 });
       },
     ),
   };
 
-  return {
+  const repositorio = {
     manager: {
       transaction: jest.fn(
         (executar: (gerenciador: typeof gerenciador) => Promise<unknown>) =>
@@ -92,6 +137,10 @@ function criarRepositorio<T extends ComId>(inicial: T[] = []) {
 
       return Promise.resolve({ ...novo });
     }),
+    update: jest.fn(
+      (criterio: Record<string, unknown>, patch: Record<string, unknown>) =>
+        Promise.resolve({ affected: aplicar(dados, criterio, patch) }),
+    ),
     delete: jest.fn((criterio: Record<string, unknown>) => {
       const indice = dados.findIndex((item) => casa(item, criterio));
 
@@ -103,6 +152,40 @@ function criarRepositorio<T extends ComId>(inicial: T[] = []) {
     }),
     dados,
   };
+
+  if (entidade) {
+    ROTAS.set(entidade, repositorio);
+  }
+
+  return repositorio;
+}
+
+function criarRepositorioDeDocumentos(inicial: Partial<Documento>[] = []) {
+  const repositorio = criarRepositorio(inicial as Documento[], Documento);
+
+  return Object.assign(repositorio, {
+    createQueryBuilder: jest.fn(() => ({
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn(() => {
+        const contagem = new Map<string | null, number>();
+
+        for (const documento of repositorio.dados) {
+          const chave = documento.moduloId ?? null;
+
+          contagem.set(chave, (contagem.get(chave) ?? 0) + 1);
+        }
+
+        return Promise.resolve(
+          [...contagem.entries()].map(([moduloId, total]) => ({
+            moduloId,
+            total,
+          })),
+        );
+      }),
+    })),
+  });
 }
 
 type RepositorioFalso<T extends ComId> = ReturnType<typeof criarRepositorio<T>>;
@@ -151,6 +234,8 @@ interface Montagem {
   alvos: RepositorioFalso<AlvoBanco>;
   servicos: RepositorioFalso<ServicoObservavel>;
   modelos: RepositorioFalso<ProvedorModelo>;
+  modulos: RepositorioFalso<Modulo>;
+  documentos: ReturnType<typeof criarRepositorioDeDocumentos>;
   registrar: jest.Mock;
 }
 
@@ -162,8 +247,12 @@ function montar(
     alvos?: Partial<AlvoBanco>[];
     servicos?: Partial<ServicoObservavel>[];
     modelos?: Partial<ProvedorModelo>[];
+    modulos?: Partial<Modulo>[];
+    documentos?: Partial<Documento>[];
   } = {},
 ): Montagem {
+  ROTAS.clear();
+
   const config = configFalsa(tetos);
   const cifra = new CifraService(config);
   const registrar = jest.fn().mockResolvedValue(null);
@@ -182,6 +271,11 @@ function montar(
   const modelos = criarRepositorio(
     (sementes.modelos ?? []) as ProvedorModelo[],
   );
+  const modulos = criarRepositorio(
+    (sementes.modulos ?? []) as Modulo[],
+    Modulo,
+  );
+  const documentos = criarRepositorioDeDocumentos(sementes.documentos ?? []);
 
   const servico = new ConfiguracaoService(
     config,
@@ -192,9 +286,21 @@ function montar(
     alvos as unknown as Repository<AlvoBanco>,
     servicos as unknown as Repository<ServicoObservavel>,
     modelos as unknown as Repository<ProvedorModelo>,
+    modulos as unknown as Repository<Modulo>,
+    documentos as unknown as Repository<Documento>,
   );
 
-  return { servico, capacidades, fontes, alvos, servicos, modelos, registrar };
+  return {
+    servico,
+    capacidades,
+    fontes,
+    alvos,
+    servicos,
+    modelos,
+    modulos,
+    documentos,
+    registrar,
+  };
 }
 
 describe('ConfiguracaoService — o ENV é o teto, o banco é o recorte', () => {
@@ -979,5 +1085,371 @@ describe('ConfiguracaoService — dialeto de CLI personalizado', () => {
         }),
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('ConfiguracaoService — módulos de conhecimento', () => {
+  it('recusa criar módulo sem descrição, e a mensagem explica por quê', async () => {
+    const { servico, modulos } = montar();
+
+    await expect(
+      servico.criarModulo({ nome: 'memoria', descricao: '   ' }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      servico.criarModulo({ nome: 'memoria', descricao: '' }),
+    ).rejects.toThrow(/precisa de uma descrição/);
+    expect(modulos.save).not.toHaveBeenCalled();
+  });
+
+  it('recusa esvaziar a descrição de um módulo já criado', async () => {
+    const { servico } = montar();
+    const criado = await servico.criarModulo({
+      nome: 'memoria',
+      descricao: 'decisoes e jeito de trabalhar do dono',
+    });
+
+    await expect(
+      servico.atualizarModulo(criado.id, { descricao: '  ' }),
+    ).rejects.toThrow(/precisa de uma descrição/);
+  });
+
+  it('recusa módulo com nome repetido', async () => {
+    const { servico } = montar();
+
+    await servico.criarModulo({ nome: 'memoria', descricao: 'coisas do dono' });
+
+    await expect(
+      servico.criarModulo({ nome: 'memoria', descricao: 'outra coisa' }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('recusa renomear um módulo para o nome de outro', async () => {
+    const { servico } = montar();
+
+    await servico.criarModulo({ nome: 'memoria', descricao: 'coisas do dono' });
+    const outro = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+
+    await expect(
+      servico.atualizarModulo(outro.id, { nome: 'memoria' }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('deixa renomear mantendo o próprio nome', async () => {
+    const { servico } = montar();
+    const criado = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+
+    const atualizado = await servico.atualizarModulo(criado.id, {
+      nome: 'infra',
+      descricao: 'servidores, deploy e rede',
+    });
+
+    expect(atualizado.descricao).toBe('servidores, deploy e rede');
+  });
+
+  it('remover módulo desassocia os documentos sem apagar nenhum', async () => {
+    const { servico, documentos, modulos } = montar(
+      {},
+      {
+        documentos: [
+          { id: 'doc-1', titulo: 'um', moduloId: null },
+          { id: 'doc-2', titulo: 'dois', moduloId: null },
+        ],
+      },
+    );
+
+    const modulo = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+
+    await servico.moverDocumentos(['doc-1', 'doc-2'], modulo.id);
+    await servico.removerModulo(modulo.id, 'usuario-1');
+
+    expect(modulos.dados).toHaveLength(0);
+    expect(documentos.dados).toHaveLength(2);
+    expect(documentos.dados.map((item) => item.moduloId)).toEqual([null, null]);
+  });
+
+  it('move documentos de um módulo para outro e depois para nenhum', async () => {
+    const { servico, documentos } = montar(
+      {},
+      {
+        documentos: [
+          { id: 'doc-1', titulo: 'um', moduloId: null },
+          { id: 'doc-2', titulo: 'dois', moduloId: null },
+        ],
+      },
+    );
+
+    const origem = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+    const destino = await servico.criarModulo({
+      nome: 'memoria',
+      descricao: 'coisas do dono',
+    });
+
+    await servico.moverDocumentos(['doc-1', 'doc-2'], origem.id);
+    const mudanca = await servico.moverDocumentos(['doc-1'], destino.id);
+
+    expect(mudanca).toEqual({ movidos: 1, moduloId: destino.id });
+    expect(documentos.dados[0].moduloId).toBe(destino.id);
+    expect(documentos.dados[1].moduloId).toBe(origem.id);
+
+    await servico.moverDocumentos(['doc-1'], null);
+
+    expect(documentos.dados[0].moduloId).toBeNull();
+  });
+
+  it('recusa mover para módulo inexistente e recusa lista vazia', async () => {
+    const { servico } = montar(
+      {},
+      { documentos: [{ id: 'doc-1', titulo: 'um', moduloId: null }] },
+    );
+
+    await expect(
+      servico.moverDocumentos(['doc-1'], 'modulo-que-nao-existe'),
+    ).rejects.toThrow(NotFoundException);
+    await expect(servico.moverDocumentos([], null)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('define e limpa o documento-capa do módulo', async () => {
+    const { servico } = montar(
+      {},
+      {
+        documentos: [{ id: 'doc-1', titulo: 'capa da infra', moduloId: null }],
+      },
+    );
+
+    const modulo = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+
+    const comCapa = await servico.definirEspecialista(modulo.id, 'doc-1');
+
+    expect(comCapa.especialistaDocumentoId).toBe('doc-1');
+
+    const semCapa = await servico.definirEspecialista(modulo.id, null);
+
+    expect(semCapa.especialistaDocumentoId).toBeNull();
+  });
+
+  it('recusa documento-capa que não está indexado', async () => {
+    const { servico } = montar();
+    const modulo = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+
+    await expect(
+      servico.definirEspecialista(modulo.id, 'doc-fantasma'),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('descreve documento e aceita apagar a descrição', async () => {
+    const { servico, documentos } = montar(
+      {},
+      { documentos: [{ id: 'doc-1', titulo: 'um', descricao: null }] },
+    );
+
+    await servico.descreverDocumento('doc-1', '  como o deploy funciona  ');
+
+    expect(documentos.dados[0].descricao).toBe('como o deploy funciona');
+
+    const limpa = await servico.descreverDocumento('doc-1', '   ');
+
+    expect(limpa.descricao).toBeNull();
+    expect(documentos.dados[0].descricao).toBeNull();
+  });
+
+  it('lista os módulos com a contagem de documentos', async () => {
+    const { servico } = montar(
+      {},
+      {
+        documentos: [
+          { id: 'doc-1', titulo: 'um', moduloId: null },
+          { id: 'doc-2', titulo: 'dois', moduloId: null },
+        ],
+      },
+    );
+
+    const modulo = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+    await servico.criarModulo({ nome: 'vazio', descricao: 'nada aqui' });
+    await servico.moverDocumentos(['doc-1'], modulo.id);
+
+    const listados = await servico.modulos();
+
+    expect(listados.map((item) => [item.nome, item.documentos])).toEqual([
+      ['infra', 1],
+      ['vazio', 0],
+    ]);
+  });
+
+  it('invalida o cache a cada escrita de módulo', async () => {
+    const { servico, modulos } = montar();
+
+    await servico.modulos();
+    expect(modulos.find).toHaveBeenCalledTimes(1);
+
+    const criado = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+    expect(modulos.find.mock.calls.length).toBeGreaterThan(1);
+
+    const antes = modulos.find.mock.calls.length;
+    await servico.atualizarModulo(criado.id, { descricao: 'outra coisa' });
+    expect(modulos.find.mock.calls.length).toBeGreaterThan(antes);
+
+    const antesDaRemocao = modulos.find.mock.calls.length;
+    await servico.removerModulo(criado.id);
+    expect(modulos.find.mock.calls.length).toBeGreaterThan(antesDaRemocao);
+  });
+});
+
+describe('ConfiguracaoService — auditoria dos módulos', () => {
+  it('audita criar, atualizar, definir capa, mover, descrever e remover', async () => {
+    const { servico, registrar } = montar(
+      {},
+      { documentos: [{ id: 'doc-1', titulo: 'um', moduloId: null }] },
+    );
+
+    const modulo = await servico.criarModulo(
+      { nome: 'infra', descricao: 'servidores e deploy' },
+      'usuario-1',
+    );
+    await servico.atualizarModulo(
+      modulo.id,
+      { descricao: 'servidores, deploy e rede' },
+      'usuario-1',
+    );
+    await servico.moverDocumentos(['doc-1'], modulo.id, 'usuario-1');
+    await servico.definirEspecialista(modulo.id, 'doc-1', 'usuario-1');
+    await servico.descreverDocumento('doc-1', 'a capa', 'usuario-1');
+    await servico.removerModulo(modulo.id, 'usuario-1');
+
+    const acoes = (registrar.mock.calls as unknown[][]).map((chamada) => {
+      const registro = chamada[0] as {
+        ferramentas: { nome: string }[];
+        usuarioId: string;
+        tom: string;
+      };
+
+      return [registro.ferramentas[0].nome, registro.usuarioId, registro.tom];
+    });
+
+    expect(acoes).toEqual([
+      ['ambiente.modulo.criar', 'usuario-1', 'configuracao'],
+      ['ambiente.modulo.atualizar', 'usuario-1', 'configuracao'],
+      ['ambiente.modulo.mover', 'usuario-1', 'configuracao'],
+      ['ambiente.modulo.especialista', 'usuario-1', 'configuracao'],
+      ['ambiente.documento.descrever', 'usuario-1', 'configuracao'],
+      ['ambiente.modulo.remover', 'usuario-1', 'configuracao'],
+    ]);
+    expect(registroDe(registrar, 5).resultado).toContain(
+      'deixando 1 documento sem módulo',
+    );
+    expect(registroDe(registrar, 2).resultado).toBe(
+      'módulo de 1 documento passou para "infra"',
+    );
+  });
+});
+
+describe('ConfiguracaoService — mapa compacto de módulos', () => {
+  it('devolve uma linha por módulo, com descrição e contagem', async () => {
+    const { servico } = montar(
+      {},
+      {
+        documentos: [
+          { id: 'doc-1', titulo: 'um', moduloId: null },
+          { id: 'doc-2', titulo: 'dois', moduloId: null },
+        ],
+      },
+    );
+
+    const modulo = await servico.criarModulo({
+      nome: 'memoria e preferencias',
+      descricao: 'decisoes e jeito de trabalhar do dono',
+    });
+
+    await servico.moverDocumentos(['doc-1', 'doc-2'], modulo.id);
+
+    expect(await servico.mapaDeModulos()).toBe(
+      '- memoria e preferencias: decisoes e jeito de trabalhar do dono (2 documentos)',
+    );
+  });
+
+  it('omite módulo sem documento e fecha com os documentos sem módulo', async () => {
+    const { servico } = montar(
+      {},
+      {
+        documentos: [
+          { id: 'doc-1', titulo: 'um', moduloId: null },
+          { id: 'doc-2', titulo: 'dois', moduloId: null },
+          { id: 'doc-3', titulo: 'tres', moduloId: null },
+        ],
+      },
+    );
+
+    const modulo = await servico.criarModulo({
+      nome: 'infra',
+      descricao: 'servidores e deploy',
+    });
+    await servico.criarModulo({ nome: 'vazio', descricao: 'nada aqui ainda' });
+    await servico.moverDocumentos(['doc-1'], modulo.id);
+
+    const mapa = await servico.mapaDeModulos();
+
+    expect(mapa).toBe(
+      [
+        '- infra: servidores e deploy (1 documento)',
+        '- sem modulo: 2 documentos',
+      ].join('\n'),
+    );
+    expect(mapa).not.toContain('vazio');
+  });
+
+  it('não passa do teto de caracteres, mesmo com muito módulo', async () => {
+    const documentos = Array.from({ length: 40 }, (_, indice) => ({
+      id: `doc-${indice}`,
+      titulo: `documento ${indice}`,
+      moduloId: null,
+    }));
+    const { servico } = montar({}, { documentos });
+
+    for (let indice = 0; indice < 20; indice += 1) {
+      const modulo = await servico.criarModulo({
+        nome: `modulo numero ${indice}`,
+        descricao:
+          'uma descrição bem comprida que existe justamente para inflar o prompt de sistema e provar que o teto de caracteres é respeitado de verdade',
+      });
+
+      await servico.moverDocumentos([`doc-${indice * 2}`], modulo.id);
+    }
+
+    const mapa = await servico.mapaDeModulos();
+
+    expect(mapa.length).toBeLessThanOrEqual(TETO_DO_MAPA_DE_MODULOS);
+    expect(mapa.split('\n').length).toBeLessThan(21);
+    expect(mapa).toContain('- sem modulo: 20 documentos');
+  });
+
+  it('é vazio quando não há módulo nem documento', async () => {
+    const { servico } = montar();
+
+    expect(await servico.mapaDeModulos()).toBe('');
   });
 });

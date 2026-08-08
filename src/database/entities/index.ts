@@ -7,6 +7,7 @@ import { Documento } from './documento.entity';
 import { FerramentaExecucao } from './ferramenta-execucao.entity';
 import { FonteConhecimento } from './fonte-conhecimento.entity';
 import { Mensagem } from './mensagem.entity';
+import { Modulo } from './modulo.entity';
 import { Perfil } from './perfil.entity';
 import { PerfilCapacidade } from './perfil-capacidade.entity';
 import { ProvedorModelo } from './provedor-modelo.entity';
@@ -29,6 +30,7 @@ export {
 } from './ferramenta-execucao.entity';
 export { FonteConhecimento } from './fonte-conhecimento.entity';
 export { Mensagem, PapelMensagem } from './mensagem.entity';
+export { Modulo } from './modulo.entity';
 export { Perfil } from './perfil.entity';
 export {
   PerfilCapacidade,
@@ -46,6 +48,7 @@ export const entidades = [
   Conversa,
   Mensagem,
   FerramentaExecucao,
+  Modulo,
   Documento,
   Trecho,
   Auditoria,

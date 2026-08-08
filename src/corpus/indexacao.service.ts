@@ -121,6 +121,8 @@ export class IndexacaoService {
       hash: procedencia.hash,
       atualizadoEm: new Date(),
       meta: existente?.meta ?? null,
+      moduloId: existente?.moduloId ?? null,
+      descricao: existente?.descricao ?? null,
     });
 
     const status: StatusArquivo = existente ? 'atualizado' : 'novo';
