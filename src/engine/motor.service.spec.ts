@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import type {
   Capacidade,
@@ -23,6 +24,7 @@ import { PoliticaService } from '../security/politica.service';
 import { RedactionService } from '../security/redaction.service';
 import { SecurityService } from '../security/security.service';
 import type { AlcancePerfil } from '../security/tipos';
+import { TETO_DA_PERSONA } from './instrucao';
 import { MotorOraculo } from './motor.service';
 import type { ContextoTurno } from './tipos';
 
@@ -219,8 +221,13 @@ function montar(
 
   const persona = jest.fn(() => responder(instalacao?.persona ?? null));
   const mapaDeModulos = jest.fn(() => responder(instalacao?.mapa ?? ''));
+  const definirPersona = jest.fn();
   const configuracao = instalacao
-    ? ({ persona, mapaDeModulos } as unknown as ConfiguracaoService)
+    ? ({
+        persona,
+        mapaDeModulos,
+        definirPersona,
+      } as unknown as ConfiguracaoService)
     : undefined;
 
   const motor = new MotorOraculo(
@@ -241,6 +248,7 @@ function montar(
     arquivo,
     persona,
     mapaDeModulos,
+    definirPersona,
   };
 }
 
@@ -640,6 +648,103 @@ describe('persona e mapa de modulos no prompt', () => {
     expect(sistema).toContain('Voce e o Oraculo');
     expect(sistema).not.toContain('nunca chega');
     expect(sistema).not.toContain('MAPA DO CONHECIMENTO');
+  });
+});
+
+describe('persona redigida antes de ir ao provedor', () => {
+  const CHAVE = 'AKIAABCDEFGHIJKLMNOP';
+
+  let aviso: jest.SpyInstance;
+
+  beforeEach(() => {
+    aviso = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    aviso.mockRestore();
+  });
+
+  const avisosDePersona = (): string[] =>
+    aviso.mock.calls
+      .map(([linha]) => String(linha))
+      .filter((linha) => linha.includes('persona'));
+
+  it('mascara token e senha da persona na mensagem de sistema', async () => {
+    const { motor, provedor } = montar([() => [texto('oi'), fim()]], 4, {
+      persona: [
+        'Voce fala como o plantonista da VM.',
+        `Use a chave ${CHAVE} quando precisar.`,
+        'senha=segredoSuperSecreto123',
+      ].join('\n'),
+    });
+
+    await coletar(motor);
+
+    const sistema = provedor.chamadas[0].sistema;
+
+    expect(sistema).toContain('Voce fala como o plantonista da VM.');
+    expect(sistema).not.toContain(CHAVE);
+    expect(sistema).not.toContain('segredoSuperSecreto123');
+    expect(sistema).toContain('[oculto:token]');
+    expect(sistema).toContain('senha=[oculto:senha]');
+  });
+
+  it('persona sem segredo chega intacta e nao gera aviso', async () => {
+    const limpa = 'Voce responde curto, cita a fonte e nao inventa comando.';
+    const { motor, provedor } = montar([() => [texto('oi'), fim()]], 4, {
+      persona: limpa,
+    });
+
+    await coletar(motor);
+
+    expect(provedor.chamadas[0].sistema).toContain(limpa);
+    expect(avisosDePersona()).toEqual([]);
+  });
+
+  it('avisa no log quando mascarou, sem imprimir o segredo', async () => {
+    const { motor } = montar([() => [texto('oi'), fim()]], 4, {
+      persona: `chave de deploy: ${CHAVE}`,
+    });
+
+    await coletar(motor);
+
+    const avisos = avisosDePersona();
+
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]).toContain('mascarado');
+    expect(avisos[0]).toContain('token (1)');
+    expect(avisos[0]).not.toContain(CHAVE);
+  });
+
+  it('nao reescreve a persona guardada — a redacao vale so no caminho do prompt', async () => {
+    const guardada = `chave de deploy: ${CHAVE}`;
+    const { motor, provedor, persona, definirPersona } = montar(
+      [() => [texto('oi'), fim()]],
+      4,
+      { persona: guardada },
+    );
+
+    await coletar(motor);
+
+    expect(definirPersona).not.toHaveBeenCalled();
+    expect(await persona.mock.results[0].value).toBe(guardada);
+    expect(provedor.chamadas[0].sistema).not.toContain(CHAVE);
+  });
+
+  it('redige antes de truncar: segredo encostado no teto ainda e mascarado', async () => {
+    const enchimento = `${'x'.repeat(TETO_DA_PERSONA - 19)} `;
+    const guardada = `${enchimento}${CHAVE}`;
+    const { motor, provedor } = montar([() => [texto('oi'), fim()]], 4, {
+      persona: guardada,
+    });
+
+    await coletar(motor);
+
+    const sistema = provedor.chamadas[0].sistema;
+
+    expect(guardada.length).toBeGreaterThan(TETO_DA_PERSONA);
+    expect(sistema).toContain('[oculto:token]');
+    expect(sistema).not.toContain('AKIA');
   });
 });
 

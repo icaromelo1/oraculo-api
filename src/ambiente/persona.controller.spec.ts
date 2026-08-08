@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import type { ConfiguracaoService } from '../config/configuracao.service';
+import { RedactionService } from '../security/redaction.service';
 import { TETO_DA_PERSONA } from '../engine/instrucao';
 import { PersonaController } from './persona.controller';
 
@@ -10,7 +11,10 @@ function montar(personaAtual: string | null = null) {
     definirPersona: definir,
   } as unknown as ConfiguracaoService;
 
-  return { controller: new PersonaController(configuracao), definir };
+  return {
+    controller: new PersonaController(configuracao, new RedactionService()),
+    definir,
+  };
 }
 
 const requisicao = { usuario: { id: 'u1' } } as never;
@@ -22,6 +26,7 @@ describe('PersonaController', () => {
     expect(await controller.ler()).toEqual({
       texto: 'sou o oraculo do icaro',
       teto: TETO_DA_PERSONA,
+      mascaramentos: 0,
     });
   });
 
@@ -71,5 +76,24 @@ describe('PersonaController', () => {
 
     expect(definir).toHaveBeenCalledWith('persona', 'u1');
     expect(definir).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('aviso de mascaramento', () => {
+  it('conta o que será mascarado antes de ir ao provedor', async () => {
+    const { controller } = montar(
+      'me chame de icaro, meu email e fulano@empresa.com.br',
+    );
+
+    const resposta = await controller.ler();
+
+    expect(resposta.mascaramentos).toBeGreaterThan(0);
+    expect(resposta.texto).toContain('fulano@empresa.com.br');
+  });
+
+  it('persona limpa não reporta mascaramento', async () => {
+    const { controller } = montar('responda curto e sem enfeite');
+
+    expect((await controller.ler()).mascaramentos).toBe(0);
   });
 });

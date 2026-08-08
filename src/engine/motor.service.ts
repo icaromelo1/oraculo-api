@@ -54,6 +54,12 @@ function descreverFalha(falha: unknown): string {
   return falha instanceof Error ? falha.message : String(falha);
 }
 
+function descreverRedacoes(ocorrencias: OcorrenciaRedacao[]): string {
+  return ocorrencias
+    .map(({ tipo, quantidade }) => `${tipo} (${quantidade})`)
+    .join(', ');
+}
+
 @Injectable()
 export class MotorOraculo {
   private readonly logger = new Logger(MotorOraculo.name);
@@ -242,7 +248,7 @@ export class MotorOraculo {
 
   private async personaDaInstalacao(): Promise<string | null> {
     try {
-      return (await this.configuracao?.persona()) ?? null;
+      return this.redigirPersona((await this.configuracao?.persona()) ?? null);
     } catch (falha) {
       this.logger.warn(
         `persona da instalacao indisponivel, valendo a do codigo: ${descreverFalha(falha)}`,
@@ -250,6 +256,22 @@ export class MotorOraculo {
 
       return null;
     }
+  }
+
+  private redigirPersona(bruta: string | null): string | null {
+    if (!bruta) {
+      return bruta;
+    }
+
+    const redigida = this.security.protegerSaida(bruta);
+
+    if (redigida.total > 0) {
+      this.logger.warn(
+        `persona da instalacao seguiu para o provedor com ${redigida.total} trecho(s) mascarado(s): ${descreverRedacoes(redigida.ocorrencias)}. o texto gravado nao foi alterado — edite a persona em Ambiente para tirar o segredo.`,
+      );
+    }
+
+    return redigida.texto;
   }
 
   private async mapaDeModulos(): Promise<string | null> {

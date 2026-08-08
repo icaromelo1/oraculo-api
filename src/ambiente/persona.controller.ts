@@ -9,19 +9,24 @@ import {
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import { ConfiguracaoService } from '../config/configuracao.service';
 import { TETO_DA_PERSONA } from '../engine/instrucao';
+import { RedactionService } from '../security/redaction.service';
 
 interface RespostaPersona {
   texto: string | null;
   teto: number;
+  mascaramentos: number;
 }
 
 @Controller('ambiente/persona')
 export class PersonaController {
-  constructor(private readonly configuracao: ConfiguracaoService) {}
+  constructor(
+    private readonly configuracao: ConfiguracaoService,
+    private readonly redacao: RedactionService,
+  ) {}
 
   @Get()
   async ler(): Promise<RespostaPersona> {
-    return { texto: await this.configuracao.persona(), teto: TETO_DA_PERSONA };
+    return this.responder(await this.configuracao.persona());
   }
 
   @Put()
@@ -36,7 +41,15 @@ export class PersonaController {
       requisicao.usuario?.id ?? null,
     );
 
-    return { texto: salva, teto: TETO_DA_PERSONA };
+    return this.responder(salva);
+  }
+
+  private responder(texto: string | null): RespostaPersona {
+    return {
+      texto,
+      teto: TETO_DA_PERSONA,
+      mascaramentos: texto ? this.redacao.redigir(texto).total : 0,
+    };
   }
 
   private lerTexto(corpo: unknown): string {
