@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { NomeFerramenta } from '../../contracts/eventos';
 import { OraculoConfig } from '../../config/config.service';
+import { ConfiguracaoService } from '../../config/configuracao.service';
 import { Trecho } from '../../database/entities';
 import { EmbeddingService } from '../../corpus/embedding.service';
 import type { RetornoFerramenta } from '../../security/tipos';
@@ -30,6 +31,11 @@ export function encurtarTrecho(texto: string): string {
 const FATOR_POOL = 5;
 const POOL_MINIMO = 20;
 
+interface LenteDeModulo {
+  id: string | null;
+  aviso: string;
+}
+
 interface LinhaTrecho extends ItemFundivel {
   texto: string;
   linhaInicio: number;
@@ -39,7 +45,7 @@ interface LinhaTrecho extends ItemFundivel {
   fonte: string;
 }
 
-const SQL_LEXICAL = `
+const SELECAO = `
   SELECT
     t.id AS id,
     t.texto AS texto,
@@ -51,29 +57,29 @@ const SQL_LEXICAL = `
     d.autoridade AS autoridade
   FROM trecho t
   JOIN documento d ON d.id = t.documento_id
-  WHERE t.busca @@ websearch_to_tsquery('portuguese', $1)
+`;
+
+const FILTRO_DE_MODULO = ' AND d.modulo_id = $3';
+
+function sqlLexical(comModulo: boolean): string {
+  return `${SELECAO}
+  WHERE t.busca @@ websearch_to_tsquery('portuguese', $1)${
+    comModulo ? FILTRO_DE_MODULO : ''
+  }
   ORDER BY ts_rank_cd(t.busca, websearch_to_tsquery('portuguese', $1)) DESC
   LIMIT $2
 `;
+}
 
 const SONDAS_IVFFLAT = 10;
 
-const SQL_VETORIAL = `
-  SELECT
-    t.id AS id,
-    t.texto AS texto,
-    t.linha_inicio AS "linhaInicio",
-    t.linha_fim AS "linhaFim",
-    d.caminho AS caminho,
-    d.titulo AS titulo,
-    d.fonte AS fonte,
-    d.autoridade AS autoridade
-  FROM trecho t
-  JOIN documento d ON d.id = t.documento_id
-  WHERE t.embedding IS NOT NULL
+function sqlVetorial(comModulo: boolean): string {
+  return `${SELECAO}
+  WHERE t.embedding IS NOT NULL${comModulo ? FILTRO_DE_MODULO : ''}
   ORDER BY t.embedding <=> $1::vector ASC
   LIMIT $2
 `;
+}
 
 @Injectable()
 export class BuscarConhecimentoCapacidade implements Capacidade {
@@ -95,6 +101,13 @@ export class BuscarConhecimentoCapacidade implements Capacidade {
       descricao: `quantidade máxima de trechos devolvidos (padrão ${LIMITE_PADRAO}, teto ${LIMITE_TETO})`,
       obrigatorio: false,
     },
+    {
+      nome: 'modulo',
+      tipo: 'string',
+      descricao:
+        'nome de um módulo do mapa do conhecimento — restringe a busca aos documentos daquele módulo',
+      obrigatorio: false,
+    },
   ];
 
   constructor(
@@ -102,6 +115,7 @@ export class BuscarConhecimentoCapacidade implements Capacidade {
     private readonly embedding: EmbeddingService,
     @InjectRepository(Trecho)
     private readonly trechos: Repository<Trecho>,
+    @Optional() private readonly configuracao?: ConfiguracaoService,
   ) {}
 
   async executar(
@@ -128,22 +142,23 @@ export class BuscarConhecimentoCapacidade implements Capacidade {
     const limite = normalizarLimite(argumentos.limite);
     const modo = this.config.recuperacao.modo;
     const poolTamanho = Math.max(limite * FATOR_POOL, POOL_MINIMO);
+    const lente = await this.resolverModulo(argumentos);
 
     const rankings: LinhaTrecho[][] = [];
 
     if (modo !== 'vetorial') {
-      rankings.push(await this.buscarLexical(consulta, poolTamanho));
+      rankings.push(await this.buscarLexical(consulta, poolTamanho, lente.id));
     }
 
     if (modo !== 'lexical') {
-      rankings.push(await this.buscarVetorial(consulta, poolTamanho));
+      rankings.push(await this.buscarVetorial(consulta, poolTamanho, lente.id));
     }
 
     const selecionados = fundirComRrf(rankings).slice(0, limite);
 
     return {
       retornos: selecionados.map((item) => this.paraRetorno(item)),
-      metrica: `${selecionados.length} trecho(s) encontrado(s) — modo ${modo}`,
+      metrica: `${selecionados.length} trecho(s) encontrado(s) — modo ${modo}${lente.aviso}`,
       volume: selecionados.length,
     };
   }
@@ -154,16 +169,45 @@ export class BuscarConhecimentoCapacidade implements Capacidade {
       : '';
   }
 
+  private async resolverModulo(
+    argumentos: Record<string, unknown>,
+  ): Promise<LenteDeModulo> {
+    const pedido =
+      typeof argumentos.modulo === 'string' ? argumentos.modulo.trim() : '';
+
+    if (!pedido) {
+      return { id: null, aviso: '' };
+    }
+
+    const encontrado = await this.configuracao?.identificarModulo(pedido);
+
+    if (!encontrado) {
+      return {
+        id: null,
+        aviso: ` — o módulo "${pedido}" não existe no mapa, então a busca correu sem filtro de módulo`,
+      };
+    }
+
+    return { id: encontrado.id, aviso: ` — módulo "${encontrado.nome}"` };
+  }
+
   private async buscarLexical(
     consulta: string,
     poolTamanho: number,
+    moduloId: string | null = null,
   ): Promise<LinhaTrecho[]> {
-    return this.trechos.query(SQL_LEXICAL, [consulta, poolTamanho]);
+    return this.trechos.query(
+      sqlLexical(moduloId !== null),
+      moduloId === null
+        ? [consulta, poolTamanho]
+        : [consulta, poolTamanho, moduloId],
+    );
   }
 
   private async buscarVetorial(
     consulta: string,
     poolTamanho: number,
+    moduloId: string | null = null,
   ): Promise<LinhaTrecho[]> {
     const [vetor] = await this.embedding.embutir([consulta], {
       prefixo: 'query',
@@ -173,10 +217,12 @@ export class BuscarConhecimentoCapacidade implements Capacidade {
     return this.trechos.manager.transaction(async (gerente) => {
       await gerente.query(`SET LOCAL ivfflat.probes = ${SONDAS_IVFFLAT}`);
 
-      return gerente.query<LinhaTrecho[]>(SQL_VETORIAL, [
-        literalVetor,
-        poolTamanho,
-      ]);
+      return gerente.query<LinhaTrecho[]>(
+        sqlVetorial(moduloId !== null),
+        moduloId === null
+          ? [literalVetor, poolTamanho]
+          : [literalVetor, poolTamanho, moduloId],
+      );
     });
   }
 

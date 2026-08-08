@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { RegistryCapacidades } from '../capabilities/registry.service';
 import { OraculoConfig } from '../config/config.service';
+import { ConfiguracaoService } from '../config/configuracao.service';
 import type {
   EventoErro,
   EventoOraculo,
@@ -62,6 +63,7 @@ export class MotorOraculo {
     private readonly registry: RegistryCapacidades,
     private readonly security: SecurityService,
     private readonly config: OraculoConfig,
+    @Optional() private readonly configuracao?: ConfiguracaoService,
   ) {}
 
   private get mapaExibicao() {
@@ -117,10 +119,16 @@ export class MotorOraculo {
   ): AsyncIterable<EventoOraculo> {
     const alcance = await this.security.carregarAlcance(contexto.perfilId);
     const modelo = this.provedor.nome;
-    const sistema = montarSistema(
-      this.registry.descreverPara(alcance),
-      this.security.instrucaoDeSistema(),
-    );
+    const [persona, mapaDeModulos] = await Promise.all([
+      this.personaDaInstalacao(),
+      this.mapaDeModulos(),
+    ]);
+    const sistema = montarSistema({
+      ferramentas: this.registry.descreverPara(alcance),
+      instrucaoDeSeguranca: this.security.instrucaoDeSistema(),
+      persona,
+      mapaDeModulos,
+    });
     const mensagens: MensagemTurno[] = [
       ...(contexto.historico ?? []),
       { papel: 'usuario', texto: pergunta },
@@ -229,6 +237,30 @@ export class MotorOraculo {
       }
 
       mensagens.push({ papel: 'usuario', texto: retornos.join('\n\n') });
+    }
+  }
+
+  private async personaDaInstalacao(): Promise<string | null> {
+    try {
+      return (await this.configuracao?.persona()) ?? null;
+    } catch (falha) {
+      this.logger.warn(
+        `persona da instalacao indisponivel, valendo a do codigo: ${descreverFalha(falha)}`,
+      );
+
+      return null;
+    }
+  }
+
+  private async mapaDeModulos(): Promise<string | null> {
+    try {
+      return (await this.configuracao?.mapaDeModulos()) ?? null;
+    } catch (falha) {
+      this.logger.warn(
+        `mapa de modulos indisponivel neste turno: ${descreverFalha(falha)}`,
+      );
+
+      return null;
     }
   }
 
