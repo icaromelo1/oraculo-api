@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import type { ConfiguracaoService } from '../config/configuracao.service';
 import { RedactionService } from '../security/redaction.service';
-import { TETO_DA_PERSONA } from '../engine/instrucao';
+import { PERSONA_PADRAO, TETO_DA_PERSONA } from '../engine/instrucao';
 import { PersonaController } from './persona.controller';
 
 function montar(personaAtual: string | null = null) {
@@ -25,9 +25,20 @@ describe('PersonaController', () => {
 
     expect(await controller.ler()).toEqual({
       texto: 'sou o oraculo do icaro',
+      padrao: PERSONA_PADRAO,
+      personalizada: true,
       teto: TETO_DA_PERSONA,
       mascaramentos: 0,
     });
+  });
+
+  it('sem nada gravado, devolve a persona padrão — nunca fica sem identidade', async () => {
+    const { controller } = montar(null);
+
+    const resposta = await controller.ler();
+
+    expect(resposta.texto).toBe(PERSONA_PADRAO);
+    expect(resposta.personalizada).toBe(false);
   });
 
   it('grava a persona e devolve o que ficou', async () => {
@@ -42,12 +53,24 @@ describe('PersonaController', () => {
     expect(saida.texto).toBe('nova persona');
   });
 
-  it('aceita texto vazio para apagar a persona', async () => {
+  it('recusa esvaziar a persona — ela é o que dá identidade ao assistente', async () => {
     const { controller, definir } = montar('antiga');
 
-    await controller.definir({ texto: '' }, requisicao);
+    await expect(controller.definir({ texto: '' }, requisicao)).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(
+      controller.definir({ texto: '   \n  ' }, requisicao),
+    ).rejects.toThrow(BadRequestException);
+    expect(definir).not.toHaveBeenCalled();
+  });
 
-    expect(definir).toHaveBeenCalledWith('', 'u1');
+  it('recusa corpo sem o campo texto', async () => {
+    const { controller } = montar();
+
+    await expect(controller.definir({}, requisicao)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('recusa corpo que não é objeto', async () => {

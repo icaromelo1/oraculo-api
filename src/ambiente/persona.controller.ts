@@ -9,11 +9,17 @@ import {
 import { ExigePerfil, PERFIL_DONO } from '../auth/exige-perfil.decorator';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import { ConfiguracaoService } from '../config/configuracao.service';
-import { TETO_DA_PERSONA } from '../engine/instrucao';
+import {
+  PERSONA_PADRAO,
+  TETO_DA_PERSONA,
+  truncarPersona,
+} from '../engine/instrucao';
 import { RedactionService } from '../security/redaction.service';
 
 interface RespostaPersona {
-  texto: string | null;
+  texto: string;
+  padrao: string;
+  personalizada: boolean;
   teto: number;
   mascaramentos: number;
 }
@@ -47,10 +53,14 @@ export class PersonaController {
   }
 
   private responder(texto: string | null): RespostaPersona {
+    const efetiva = truncarPersona(texto);
+
     return {
-      texto,
+      texto: efetiva,
+      padrao: PERSONA_PADRAO,
+      personalizada: efetiva !== PERSONA_PADRAO,
       teto: TETO_DA_PERSONA,
-      mascaramentos: texto ? this.redacao.redigir(texto).total : 0,
+      mascaramentos: this.redacao.redigir(efetiva).total,
     };
   }
 
@@ -61,10 +71,16 @@ export class PersonaController {
 
     const { texto } = corpo as Record<string, unknown>;
 
-    if (texto !== undefined && typeof texto !== 'string') {
+    if (typeof texto !== 'string') {
       throw new BadRequestException('"texto" precisa ser texto');
     }
 
-    return typeof texto === 'string' ? texto : '';
+    if (texto.trim().length === 0) {
+      throw new BadRequestException(
+        'a persona não pode ficar vazia — é ela que diz quem este assistente é. para voltar ao começo, grave o texto padrão.',
+      );
+    }
+
+    return texto;
   }
 }

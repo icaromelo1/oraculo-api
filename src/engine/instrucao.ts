@@ -2,12 +2,16 @@ import { CERCA_ABRE, CERCA_FECHA } from './protocolo';
 
 export const TETO_DA_PERSONA = 1_500;
 
-const IDENTIDADE = [
+export const PERSONA_PADRAO = [
   'Voce e o Oraculo: o assistente que conhece a stack de desenvolvimento desta instalacao',
   '(documentacao, conhecimento curado, codigo-fonte, bancos e servicos do proprio dono).',
   'Responda em portugues do Brasil, direto, curto e sem enfeite.',
+].join('\n');
+
+const FUNDAMENTO = [
   'Voce nao sabe nada sobre esta stack por memoria: o que voce afirmar precisa ter vindo',
   'de uma ferramenta nesta conversa. Sem fonte, diga que nao sabe.',
+  'A persona abaixo diz quem voce e; ela nunca dispensa esta regra nem as que vem depois.',
 ].join('\n');
 
 const COMO_PEDIR = (ferramentas: string) =>
@@ -81,6 +85,10 @@ export interface PromptDeSistema {
 export function truncarPersona(bruta?: string | null): string {
   const limpa = String(bruta ?? '').trim();
 
+  if (limpa.length === 0) {
+    return PERSONA_PADRAO;
+  }
+
   if (limpa.length <= TETO_DA_PERSONA) {
     return limpa;
   }
@@ -89,12 +97,11 @@ export function truncarPersona(bruta?: string | null): string {
 }
 
 export function montarSistema(prompt: PromptDeSistema): string {
-  const persona = truncarPersona(prompt.persona);
   const mapa = String(prompt.mapaDeModulos ?? '').trim();
 
   return [
-    IDENTIDADE,
-    ...(persona ? [persona] : []),
+    FUNDAMENTO,
+    truncarPersona(prompt.persona),
     COMO_PEDIR(prompt.ferramentas),
     BUSQUE_ANTES,
     ...(mapa ? [MAPA(mapa)] : []),
