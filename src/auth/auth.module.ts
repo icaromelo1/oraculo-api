@@ -56,6 +56,6 @@ import { PerfilGuard } from './perfil.guard';
       },
     },
   ],
-  exports: [AuthGuard, PerfilGuard, AUTENTICADOR],
+  exports: [AuthGuard, PerfilGuard, AUTENTICADOR, TypeOrmModule],
 })
 export class AuthModule {}
