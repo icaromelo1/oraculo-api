@@ -52,6 +52,8 @@ function documento(parcial: Partial<Documento> = {}): Documento {
     hash: 'hash-do-guia',
     atualizadoEm: new Date('2026-08-01T10:00:00.000Z'),
     meta: null,
+    moduloId: null,
+    descricao: null,
     ...parcial,
   };
 }
@@ -223,6 +225,18 @@ describe('BibliotecaService.listar', () => {
 
     expect(primeiro.caminho).toBe(`${EXIBICAO}/guia.md`);
     expect(primeiro.caminhoReal).toBe(join(corpus, 'guia.md'));
+  });
+
+  it('devolve módulo e descrição para a tela reler o que salvou', async () => {
+    const { servico } = montar([
+      documento({ moduloId: UUID_NOTA, descricao: 'passo a passo do backup' }),
+    ]);
+
+    const [primeiro] = (await servico.listar(validarListarDocumentosDto({})))
+      .documentos;
+
+    expect(primeiro.moduloId).toBe(UUID_NOTA);
+    expect(primeiro.descricao).toBe('passo a passo do backup');
   });
 
   it('conta os trechos numa consulta agregada só, não uma por documento', async () => {

@@ -28,6 +28,8 @@ export interface DocumentoResumido {
   autoridade: number;
   atualizadoEm: Date;
   editavel: boolean;
+  moduloId: string | null;
+  descricao: string | null;
 }
 
 export interface DocumentoListado extends DocumentoResumido {
@@ -227,6 +229,8 @@ export class BibliotecaService {
       fonte: documento.fonte,
       autoridade: documento.autoridade,
       atualizadoEm: documento.atualizadoEm,
+      moduloId: documento.moduloId ?? null,
+      descricao: documento.descricao ?? null,
       editavel: this.editavel(documento.caminho),
     };
   }
