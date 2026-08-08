@@ -227,6 +227,34 @@ describe('BibliotecaService.listar', () => {
     expect(primeiro.caminhoReal).toBe(join(corpus, 'guia.md'));
   });
 
+  it('ordena por data por padrão e por nome quando pedido', async () => {
+    const padrao = montar([]);
+
+    await padrao.servico.listar(validarListarDocumentosDto({}));
+
+    expect(padrao.consulta.orderBy).toHaveBeenCalledWith(
+      'documento.atualizadoEm',
+      'DESC',
+    );
+
+    const porNome = montar([]);
+
+    await porNome.servico.listar(
+      validarListarDocumentosDto({ ordenar: 'nome' }),
+    );
+
+    expect(porNome.consulta.orderBy).toHaveBeenCalledWith(
+      'LOWER(documento.titulo)',
+      'ASC',
+    );
+  });
+
+  it('recusa ordenação desconhecida', () => {
+    expect(() => validarListarDocumentosDto({ ordenar: 'tamanho' })).toThrow(
+      BadRequestException,
+    );
+  });
+
   it('filtra por módulo e pelos que estão sem módulo', async () => {
     const { servico, consulta } = montar([]);
 

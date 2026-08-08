@@ -16,12 +16,17 @@ export const POR_PAGINA_TETO = 100;
 const AUTORIDADE_MINIMA = 1;
 const AUTORIDADE_MAXIMA = 4;
 
+export const ORDENACOES = ['data', 'nome'] as const;
+
+export type OrdenacaoDeDocumentos = (typeof ORDENACOES)[number];
+
 export class ListarDocumentosDto {
   busca?: string;
   fonte?: Fonte;
   autoridade?: number;
   modulo?: string;
   pasta?: string;
+  ordenar: OrdenacaoDeDocumentos = 'data';
   recursivo: boolean = true;
   pagina: number = PAGINA_PADRAO;
   porPagina: number = POR_PAGINA_PADRAO;
@@ -96,6 +101,20 @@ function lerModulo(valor: unknown): string | undefined {
   return texto;
 }
 
+function lerOrdenacao(valor: unknown): OrdenacaoDeDocumentos {
+  const texto = lerTexto(valor);
+
+  if (texto === undefined) return 'data';
+
+  if (!ORDENACOES.includes(texto as OrdenacaoDeDocumentos)) {
+    throw new BadRequestException(
+      `"ordenar" precisa ser uma de: ${ORDENACOES.join(', ')}`,
+    );
+  }
+
+  return texto as OrdenacaoDeDocumentos;
+}
+
 function lerBooleano(valor: unknown, padrao: boolean): boolean {
   if (valor === undefined || valor === null || valor === '') return padrao;
   if (valor === true || valor === 'true') return true;
@@ -128,6 +147,7 @@ export function validarListarDocumentosDto(
 
   dto.autoridade = lerAutoridade(corpo.autoridade);
   dto.modulo = lerModulo(corpo.modulo);
+  dto.ordenar = lerOrdenacao(corpo.ordenar);
   dto.pagina = lerInteiro(corpo.pagina, PAGINA_PADRAO, 'pagina');
   dto.porPagina = Math.min(
     lerInteiro(corpo.porPagina, POR_PAGINA_PADRAO, 'porPagina'),

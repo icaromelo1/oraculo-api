@@ -75,10 +75,17 @@ export class BibliotecaService {
   ) {}
 
   async listar(filtro: ListarDocumentosDto): Promise<ListaDocumentos> {
-    const consulta = this.documentos
-      .createQueryBuilder('documento')
-      .orderBy('documento.atualizadoEm', 'DESC')
-      .addOrderBy('documento.caminho', 'ASC');
+    const consulta = this.documentos.createQueryBuilder('documento');
+
+    if (filtro.ordenar === 'nome') {
+      consulta
+        .orderBy('LOWER(documento.titulo)', 'ASC')
+        .addOrderBy('documento.caminho', 'ASC');
+    } else {
+      consulta
+        .orderBy('documento.atualizadoEm', 'DESC')
+        .addOrderBy('documento.caminho', 'ASC');
+    }
 
     if (filtro.busca) {
       consulta.andWhere(
