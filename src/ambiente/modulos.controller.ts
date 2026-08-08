@@ -9,6 +9,7 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
+import { ExigePerfil, PERFIL_DONO } from '../auth/exige-perfil.decorator';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import {
   ConfiguracaoService,
@@ -36,6 +37,7 @@ export class ModulosController {
     return { modulos, mapa };
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post()
   criar(
     @Body() corpo: unknown,
@@ -47,6 +49,7 @@ export class ModulosController {
     );
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post('mover')
   mover(
     @Body() corpo: unknown,
@@ -61,6 +64,7 @@ export class ModulosController {
     );
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Patch(':id')
   atualizar(
     @Param('id') id: string,
@@ -75,6 +79,7 @@ export class ModulosController {
   }
 
   @HttpCode(204)
+  @ExigePerfil(PERFIL_DONO)
   @Delete(':id')
   async remover(
     @Param('id') id: string,
@@ -83,6 +88,7 @@ export class ModulosController {
     await this.configuracao.removerModulo(id, this.usuarioId(requisicao));
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post(':id/especialista')
   definirEspecialista(
     @Param('id') id: string,

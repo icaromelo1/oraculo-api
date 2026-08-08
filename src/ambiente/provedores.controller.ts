@@ -8,6 +8,7 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
+import { ExigePerfil, PERFIL_DONO } from '../auth/exige-perfil.decorator';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import { OraculoConfig } from '../config/config.service';
 import {
@@ -52,6 +53,7 @@ export class ProvedoresController {
     return { presets: PRESETS_DE_PROVEDOR };
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post()
   criar(@Body() corpo: unknown, @Req() requisicao: RequisicaoAutenticada) {
     return this.configuracao.criarProvedor(
@@ -60,6 +62,7 @@ export class ProvedoresController {
     );
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post('testar')
   testarAvulso(
     @Body() corpo: unknown,
@@ -71,11 +74,13 @@ export class ProvedoresController {
     );
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post(':id/ativar')
   ativar(@Param('id') id: string, @Req() requisicao: RequisicaoAutenticada) {
     return this.configuracao.ativarProvedor(id, this.usuarioId(requisicao));
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post(':id/testar')
   testarCadastrado(
     @Param('id') id: string,
@@ -85,6 +90,7 @@ export class ProvedoresController {
   }
 
   @HttpCode(204)
+  @ExigePerfil(PERFIL_DONO)
   @Delete(':id')
   async remover(
     @Param('id') id: string,

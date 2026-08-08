@@ -11,6 +11,7 @@ import { AuthGuard } from './auth.guard';
 import { KeycloakAutenticador } from './keycloak.autenticador';
 import { LocalAutenticador } from './local.autenticador';
 import { OidcAutenticador } from './oidc.autenticador';
+import { PerfilGuard } from './perfil.guard';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { OidcAutenticador } from './oidc.autenticador';
     KeycloakAutenticador,
     OidcAutenticador,
     AuthGuard,
+    PerfilGuard,
     {
       provide: AUTENTICADOR,
       inject: [
@@ -54,6 +56,6 @@ import { OidcAutenticador } from './oidc.autenticador';
       },
     },
   ],
-  exports: [AuthGuard, AUTENTICADOR],
+  exports: [AuthGuard, PerfilGuard, AUTENTICADOR],
 })
 export class AuthModule {}

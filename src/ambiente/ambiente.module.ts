@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthModule } from '../auth/auth.module';
 import { ConfiguracaoModule } from '../config/configuracao.module';
 import { Documento, ProvedorModelo } from '../database/entities';
 import { criarLlmProviderDe } from '../providers/provider.factory';
@@ -16,6 +17,7 @@ import {
 
 @Module({
   imports: [
+    AuthModule,
     ConfiguracaoModule,
     SecurityModule,
     TypeOrmModule.forFeature([Documento, ProvedorModelo]),

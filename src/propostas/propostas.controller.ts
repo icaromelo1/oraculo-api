@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { ExigePerfil, PERFIL_DONO } from '../auth/exige-perfil.decorator';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import {
   validarAprovacaoDto,
@@ -33,6 +34,7 @@ export class PropostasController {
     );
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post(':id/aprovar')
   aprovar(
     @Param('id') id: string,
@@ -46,6 +48,7 @@ export class PropostasController {
     );
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post(':id/descartar')
   descartar(
     @Param('id') id: string,

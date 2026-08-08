@@ -12,6 +12,7 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
+import { ExigePerfil, PERFIL_DONO } from '../auth/exige-perfil.decorator';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import { abrirSessaoPostgres } from '../capabilities/banco/conexao';
 import { verificarSomenteLeitura } from '../capabilities/banco/verificacao-alvo';
@@ -41,6 +42,7 @@ export class AmbienteController {
     return this.ambiente.previaDeFonte(caminho);
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Patch('capacidades')
   definirCapacidade(
     @Body() corpo: unknown,
@@ -55,6 +57,7 @@ export class AmbienteController {
     );
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post('fontes')
   criarFonte(@Body() corpo: unknown, @Req() requisicao: RequisicaoAutenticada) {
     return this.configuracao.criarFonte(
@@ -64,6 +67,7 @@ export class AmbienteController {
   }
 
   @HttpCode(204)
+  @ExigePerfil(PERFIL_DONO)
   @Delete('fontes/:id')
   async removerFonte(
     @Param('id') id: string,
@@ -72,6 +76,7 @@ export class AmbienteController {
     await this.configuracao.removerFonte(id, this.usuarioId(requisicao));
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post('servicos')
   criarServico(
     @Body() corpo: unknown,
@@ -84,6 +89,7 @@ export class AmbienteController {
   }
 
   @HttpCode(204)
+  @ExigePerfil(PERFIL_DONO)
   @Delete('servicos/:id')
   async removerServico(
     @Param('id') id: string,
@@ -92,6 +98,7 @@ export class AmbienteController {
     await this.configuracao.removerServico(id, this.usuarioId(requisicao));
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Post('alvos-banco')
   async criarAlvoBanco(
     @Body() corpo: unknown,
@@ -123,6 +130,7 @@ export class AmbienteController {
   }
 
   @HttpCode(204)
+  @ExigePerfil(PERFIL_DONO)
   @Delete('alvos-banco/:id')
   async removerAlvoBanco(
     @Param('id') id: string,

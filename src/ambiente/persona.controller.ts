@@ -6,6 +6,7 @@ import {
   Put,
   Req,
 } from '@nestjs/common';
+import { ExigePerfil, PERFIL_DONO } from '../auth/exige-perfil.decorator';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import { ConfiguracaoService } from '../config/configuracao.service';
 import { TETO_DA_PERSONA } from '../engine/instrucao';
@@ -29,6 +30,7 @@ export class PersonaController {
     return this.responder(await this.configuracao.persona());
   }
 
+  @ExigePerfil(PERFIL_DONO)
   @Put()
   async definir(
     @Body() corpo: unknown,
