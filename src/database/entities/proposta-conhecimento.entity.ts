@@ -62,4 +62,7 @@ export class PropostaConhecimento {
 
   @Column({ type: 'text', name: 'observacao_da_decisao', nullable: true })
   observacaoDaDecisao: string | null;
+
+  @Column({ type: 'varchar', name: 'nota_slug', nullable: true })
+  notaSlug: string | null;
 }

@@ -6,6 +6,7 @@ import {
   type NotaGravada,
 } from '../conhecimento/conhecimento.service';
 import type { CriarNotaDto } from '../conhecimento/dto/criar-nota.dto';
+import { gerarSlug, proximoSlug } from '../conhecimento/slug';
 import { PropostaConhecimento, StatusProposta } from '../database/entities';
 import { SecurityService } from '../security/security.service';
 import type { RegistroTurno } from '../security/tipos';
@@ -31,8 +32,69 @@ function proposta(
     decididaPorId: null,
     decididaPor: null,
     observacaoDaDecisao: null,
+    notaSlug: null,
     ...parcial,
   };
+}
+
+function criarCorpus() {
+  const notas = new Map<string, string>();
+
+  const gravada = (slug: string): NotaGravada => ({
+    id: 'documento-1',
+    slug,
+    caminho: `/notas/${slug}.md`,
+    trechosIndexados: 2,
+  });
+
+  const criarNota = jest
+    .fn<Promise<NotaGravada>, [CriarNotaDto, (string | null)?]>()
+    .mockImplementation((pedido) => {
+      const base = gerarSlug(pedido.titulo);
+      let tentativa = 1;
+
+      while (notas.has(proximoSlug(base, tentativa))) {
+        tentativa += 1;
+      }
+
+      const slug = proximoSlug(base, tentativa);
+
+      notas.set(slug, pedido.conteudo);
+
+      return Promise.resolve(gravada(slug));
+    });
+
+  const editarNota = jest
+    .fn<Promise<NotaGravada>, [string, string, (string | null)?]>()
+    .mockImplementation((slug, conteudo) => {
+      if (!notas.has(slug)) {
+        return Promise.reject(
+          new NotFoundException(`nota "${slug}" não existe`),
+        );
+      }
+
+      notas.set(slug, conteudo);
+
+      return Promise.resolve(gravada(slug));
+    });
+
+  const removerNota = jest
+    .fn<Promise<void>, [string, (string | null)?]>()
+    .mockImplementation((slug) => {
+      if (!notas.delete(slug)) {
+        return Promise.reject(
+          new NotFoundException(`nota "${slug}" não existe`),
+        );
+      }
+
+      return Promise.resolve();
+    });
+
+  return { notas, criarNota, editarNota, removerNota };
+}
+
+function slugsDoCorpus(conhecimento: Montagem['conhecimento']): string[] {
+  return [...conhecimento.notas.keys()];
 }
 
 function criarRepositorio(inicial: PropostaConhecimento[] = []) {
@@ -59,6 +121,15 @@ function criarRepositorio(inicial: PropostaConhecimento[] = []) {
 
       return Promise.resolve(salva);
     }),
+    update: jest.fn((id: string, dados: Partial<PropostaConhecimento>) => {
+      const posicao = linhas.findIndex((linha) => linha.id === id);
+
+      if (posicao >= 0) {
+        linhas[posicao] = { ...linhas[posicao], ...dados };
+      }
+
+      return Promise.resolve({ affected: posicao >= 0 ? 1 : 0 });
+    }),
     findOne: jest.fn(({ where }: { where: { id: string } }) =>
       Promise.resolve(linhas.find((linha) => linha.id === where.id) ?? null),
     ),
@@ -79,16 +150,7 @@ function criarRepositorio(inicial: PropostaConhecimento[] = []) {
 function montar(inicial: PropostaConhecimento[] = []) {
   const repositorio = criarRepositorio(inicial);
 
-  const conhecimento = {
-    criarNota: jest
-      .fn<Promise<NotaGravada>, [CriarNotaDto, (string | null)?]>()
-      .mockResolvedValue({
-        id: 'documento-1',
-        slug: 'teto-de-sala-no-kairos',
-        caminho: '/notas/teto-de-sala-no-kairos.md',
-        trechosIndexados: 2,
-      }),
-  };
+  const conhecimento = criarCorpus();
 
   const configuracao = {
     modulos: jest.fn().mockResolvedValue([{ id: 'modulo-1', nome: 'kairos' }]),
@@ -307,6 +369,126 @@ describe('PropostasService', () => {
       await expect(
         servico.aprovar('proposta-9', {}, DECISOR),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('reserva o slug da nota na proposta antes de decidi-la', async () => {
+      const { servico, repositorio, conhecimento } = montar([proposta()]);
+
+      const resultado = await servico.aprovar('proposta-1', {}, DECISOR);
+
+      expect(repositorio.update).toHaveBeenCalledWith('proposta-1', {
+        notaSlug: 'teto-de-sala-no-kairos',
+      });
+      expect(repositorio.update.mock.invocationCallOrder[0]).toBeLessThan(
+        repositorio.save.mock.invocationCallOrder[0],
+      );
+      expect(resultado.proposta.notaSlug).toBe('teto-de-sala-no-kairos');
+      expect(slugsDoCorpus(conhecimento)).toEqual(['teto-de-sala-no-kairos']);
+    });
+  });
+
+  describe('reaprovar depois de uma aprovação partida no meio', () => {
+    it('falha no UPDATE da decisão: a reaprovação regrava a mesma nota, não uma segunda', async () => {
+      const { servico, repositorio, conhecimento, seguranca } = montar([
+        proposta(),
+      ]);
+
+      repositorio.save.mockRejectedValueOnce(new Error('banco caiu no meio'));
+
+      await expect(servico.aprovar('proposta-1', {}, DECISOR)).rejects.toThrow(
+        'banco caiu no meio',
+      );
+
+      expect(slugsDoCorpus(conhecimento)).toEqual(['teto-de-sala-no-kairos']);
+      expect(repositorio.linhas[0].status).toBe(StatusProposta.PENDENTE);
+      expect(repositorio.linhas[0].notaSlug).toBe('teto-de-sala-no-kairos');
+
+      const resultado = await servico.aprovar('proposta-1', {}, DECISOR);
+
+      expect(slugsDoCorpus(conhecimento)).toEqual(['teto-de-sala-no-kairos']);
+      expect(conhecimento.criarNota).toHaveBeenCalledTimes(1);
+      expect(conhecimento.editarNota).toHaveBeenCalledTimes(1);
+      expect(resultado.nota.slug).toBe('teto-de-sala-no-kairos');
+      expect(resultado.proposta.status).toBe(StatusProposta.APROVADA);
+
+      const gravado = conhecimento.notas.get('teto-de-sala-no-kairos') ?? '';
+
+      expect(gravado.startsWith('# teto de sala no Kairos')).toBe(true);
+      expect(gravado).toContain(TITULO_DA_PROCEDENCIA);
+
+      const ultima = auditorias(seguranca).at(-1);
+
+      expect(ultima?.ferramentas?.[0]?.argumento).toMatchObject({
+        slug: 'teto-de-sala-no-kairos',
+        regravada: true,
+      });
+    });
+
+    it('falha no UPDATE da reserva: a nota órfã sai do corpus e a reaprovação grava uma só', async () => {
+      const { servico, repositorio, conhecimento } = montar([proposta()]);
+
+      repositorio.update.mockRejectedValueOnce(
+        new Error('banco caiu antes da reserva'),
+      );
+
+      await expect(servico.aprovar('proposta-1', {}, DECISOR)).rejects.toThrow(
+        'banco caiu antes da reserva',
+      );
+
+      expect(conhecimento.removerNota).toHaveBeenCalledWith(
+        'teto-de-sala-no-kairos',
+        'usuario-1',
+      );
+      expect(slugsDoCorpus(conhecimento)).toEqual([]);
+
+      const resultado = await servico.aprovar('proposta-1', {}, DECISOR);
+
+      expect(slugsDoCorpus(conhecimento)).toEqual(['teto-de-sala-no-kairos']);
+      expect(resultado.nota.slug).toBe('teto-de-sala-no-kairos');
+    });
+
+    it('regrava com o mesmo slug quando a nota reservada sumiu do corpus', async () => {
+      const { servico, conhecimento } = montar([
+        proposta({ notaSlug: 'teto-de-sala-no-kairos' }),
+      ]);
+
+      const resultado = await servico.aprovar('proposta-1', {}, DECISOR);
+
+      expect(conhecimento.editarNota).toHaveBeenCalledTimes(1);
+      expect(conhecimento.criarNota).toHaveBeenCalledTimes(1);
+      expect(resultado.nota.slug).toBe('teto-de-sala-no-kairos');
+      expect(slugsDoCorpus(conhecimento)).toEqual(['teto-de-sala-no-kairos']);
+    });
+
+    it('não cria segunda nota quando a regravação falha por outro motivo', async () => {
+      const { servico, conhecimento } = montar([
+        proposta({ notaSlug: 'teto-de-sala-no-kairos' }),
+      ]);
+
+      conhecimento.notas.set('teto-de-sala-no-kairos', '# nota anterior');
+      conhecimento.editarNota.mockRejectedValueOnce(new Error('disco cheio'));
+
+      await expect(servico.aprovar('proposta-1', {}, DECISOR)).rejects.toThrow(
+        'disco cheio',
+      );
+
+      expect(conhecimento.criarNota).not.toHaveBeenCalled();
+      expect(slugsDoCorpus(conhecimento)).toEqual(['teto-de-sala-no-kairos']);
+    });
+
+    it('409 mesmo com nota reservada, quando a proposta já foi decidida', async () => {
+      const { servico, conhecimento } = montar([proposta()]);
+
+      await servico.aprovar('proposta-1', {}, DECISOR);
+      conhecimento.criarNota.mockClear();
+      conhecimento.editarNota.mockClear();
+
+      await expect(
+        servico.aprovar('proposta-1', {}, DECISOR),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(conhecimento.criarNota).not.toHaveBeenCalled();
+      expect(conhecimento.editarNota).not.toHaveBeenCalled();
+      expect(slugsDoCorpus(conhecimento)).toEqual(['teto-de-sala-no-kairos']);
     });
   });
 

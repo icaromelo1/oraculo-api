@@ -20,6 +20,7 @@ const PROPOSTA: PropostaResumida = {
   decididaEm: null,
   decididaPorId: null,
   observacaoDaDecisao: null,
+  notaSlug: null,
 };
 
 function montar() {

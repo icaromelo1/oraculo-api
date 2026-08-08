@@ -22,6 +22,7 @@ import { OraculoConfig } from '../config/config.service';
 import { IndexacaoService } from '../corpus/indexacao.service';
 import { extrairTitulo } from '../corpus/procedencia';
 import { SecurityService } from '../security/security.service';
+import { corpoDaNota } from './corpo-da-nota';
 import { CriarNotaDto } from './dto/criar-nota.dto';
 import { extrairTextoDePdf, mensagemDoErro, pareceDocumentoPdf } from './pdf';
 import {
@@ -45,7 +46,6 @@ const EXTENSOES_ACEITAS = ['.md', '.txt', '.pdf'];
 
 const EXTENSAO_GRAVADA = '.md';
 const MAX_TENTATIVAS_DE_SLUG = 500;
-const HEADING = /^#{1,6}\s+\S/;
 const BYTE_NULO = String.fromCharCode(0);
 
 export interface ArquivoEnviado {
@@ -112,7 +112,7 @@ export class ConhecimentoService {
 
     return this.gravar({
       slugBase: gerarSlug(titulo),
-      conteudo: this.corpoDaNota(titulo, conteudo),
+      conteudo: corpoDaNota(titulo, conteudo),
       acao: 'conhecimento.nota.criar',
       descricao: `nota "${titulo}"`,
       usuarioId,
@@ -374,7 +374,7 @@ export class ConhecimentoService {
 
     return this.gravar({
       slugBase: slugDoNomeDeArquivo(nome),
-      conteudo: this.corpoDaNota(tituloDoArquivo(nome), texto),
+      conteudo: corpoDaNota(tituloDoArquivo(nome), texto),
       acao: 'conhecimento.arquivo.enviar',
       descricao: `PDF "${nome}" (${extracao.paginas} página(s), texto extraído)`,
       usuarioId,
@@ -489,18 +489,6 @@ export class ConhecimentoService {
     } catch {
       return false;
     }
-  }
-
-  private corpoDaNota(titulo: string, conteudo: string): string {
-    const primeiraLinha = conteudo
-      .split('\n')
-      .find((linha) => linha.trim().length > 0);
-
-    if (primeiraLinha && HEADING.test(primeiraLinha.trim())) {
-      return conteudo;
-    }
-
-    return `# ${titulo}\n\n${conteudo}`;
   }
 
   private utf8Valido(buffer: Buffer): boolean {

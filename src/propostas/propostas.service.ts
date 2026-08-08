@@ -13,6 +13,7 @@ import {
 } from '../conhecimento/conhecimento.service';
 import { PropostaConhecimento, StatusProposta } from '../database/entities';
 import { SecurityService } from '../security/security.service';
+import { corpoDaNota } from '../conhecimento/corpo-da-nota';
 import { comProcedencia } from './procedencia-da-proposta';
 
 export interface NovaProposta {
@@ -51,6 +52,7 @@ export interface PropostaResumida {
   decididaEm: Date | null;
   decididaPorId: string | null;
   observacaoDaDecisao: string | null;
+  notaSlug: string | null;
 }
 
 export interface PropostaAprovada {
@@ -100,6 +102,7 @@ export class PropostasService {
         decididaEm: null,
         decididaPorId: null,
         observacaoDaDecisao: null,
+        notaSlug: null,
       }),
     );
 
@@ -135,17 +138,21 @@ export class PropostasService {
 
     const decididaEm = new Date();
 
-    const nota = await this.conhecimento.criarNota(
-      {
-        titulo,
-        conteudo: comProcedencia(conteudo, {
-          origemCaminho: proposta.origemCaminho,
-          justificativa: proposta.justificativa,
-          descobertaEm: proposta.criadaEm,
-          aprovadaEm: decididaEm,
-          aprovadaPor: decisor?.login ?? null,
-        }),
-      },
+    const corpo = corpoDaNota(
+      titulo,
+      comProcedencia(conteudo, {
+        origemCaminho: proposta.origemCaminho,
+        justificativa: proposta.justificativa,
+        descobertaEm: proposta.criadaEm,
+        aprovadaEm: decididaEm,
+        aprovadaPor: decisor?.login ?? null,
+      }),
+    );
+
+    const { nota, regravada } = await this.notaDaProposta(
+      proposta,
+      titulo,
+      corpo,
       usuarioId,
     );
 
@@ -156,6 +163,7 @@ export class PropostasService {
       titulo,
       conteudo,
       moduloId,
+      notaSlug: nota.slug,
       status: StatusProposta.APROVADA,
       decididaEm,
       decididaPorId: usuarioId,
@@ -171,9 +179,14 @@ export class PropostasService {
         slug: nota.slug,
         caminho: nota.caminho,
         moduloId,
+        regravada,
         editada: titulo !== proposta.titulo || conteudo !== proposta.conteudo,
       },
-      `proposta "${titulo}" aprovada (antes: pendente) e gravada como nota em ${nota.caminho} — ${nota.trechosIndexados} trecho(s) indexado(s)`,
+      `proposta "${titulo}" aprovada (antes: pendente) e ${
+        regravada
+          ? 'regravada sobre a nota que ela já tinha reservado'
+          : 'gravada como nota'
+      } em ${nota.caminho} — ${nota.trechosIndexados} trecho(s) indexado(s)`,
     );
 
     return { proposta: this.resumir(aprovada), nota };
@@ -244,6 +257,90 @@ export class PropostasService {
     }
   }
 
+  private async notaDaProposta(
+    proposta: PropostaConhecimento,
+    titulo: string,
+    corpo: string,
+    usuarioId: string | null,
+  ): Promise<{ nota: NotaGravada; regravada: boolean }> {
+    const reservado = proposta.notaSlug;
+
+    if (reservado) {
+      const regravada = await this.regravarNotaReservada(
+        reservado,
+        corpo,
+        usuarioId,
+      );
+
+      if (regravada) {
+        return { nota: regravada, regravada: true };
+      }
+    }
+
+    const nota = await this.gravarNotaNova(proposta, titulo, corpo, usuarioId);
+
+    return { nota, regravada: false };
+  }
+
+  private async regravarNotaReservada(
+    slug: string,
+    corpo: string,
+    usuarioId: string | null,
+  ): Promise<NotaGravada | null> {
+    try {
+      return await this.conhecimento.editarNota(slug, corpo, usuarioId);
+    } catch (erro) {
+      if (!(erro instanceof NotFoundException)) {
+        throw erro;
+      }
+
+      this.logger.warn(
+        `a nota "${slug}", reservada por uma aprovação anterior desta proposta, não está mais no corpus — vai ser gravada de novo`,
+      );
+
+      return null;
+    }
+  }
+
+  private async gravarNotaNova(
+    proposta: PropostaConhecimento,
+    titulo: string,
+    corpo: string,
+    usuarioId: string | null,
+  ): Promise<NotaGravada> {
+    const nota = await this.conhecimento.criarNota(
+      { titulo, conteudo: corpo },
+      usuarioId,
+    );
+
+    try {
+      await this.propostas.update(proposta.id, { notaSlug: nota.slug });
+    } catch (erro) {
+      await this.removerNotaOrfa(nota, usuarioId);
+
+      throw erro;
+    }
+
+    proposta.notaSlug = nota.slug;
+
+    return nota;
+  }
+
+  private async removerNotaOrfa(
+    nota: NotaGravada,
+    usuarioId: string | null,
+  ): Promise<void> {
+    try {
+      await this.conhecimento.removerNota(nota.slug, usuarioId);
+    } catch (erro) {
+      this.logger.error(
+        `a nota "${nota.slug}" ficou em ${nota.caminho} sem a proposta ter registrado a reserva, e não foi possível removê-la — apague-a do corpus à mão antes de reaprovar, senão a reaprovação cria uma segunda: ${
+          erro instanceof Error ? erro.message : String(erro)
+        }`,
+      );
+    }
+  }
+
   private async classificarNoModulo(
     nota: NotaGravada,
     moduloId: string | null,
@@ -277,6 +374,7 @@ export class PropostasService {
       decididaEm: proposta.decididaEm,
       decididaPorId: proposta.decididaPorId,
       observacaoDaDecisao: proposta.observacaoDaDecisao,
+      notaSlug: proposta.notaSlug ?? null,
     };
   }
 
