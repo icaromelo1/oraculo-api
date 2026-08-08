@@ -171,7 +171,7 @@ provedor gratuito. O mapa custa ~250 tokens e evita a segunda busca.
 número de documentos, omitindo módulo vazio e fechando com `- sem modulo: N documentos`.
 
 **Reindexação preserva `modulo_id` e `descricao`** — `indexarArquivo` recarrega os dois no `save`.
-Sem isso a varredura das 04:30 apagaria todo o trabalho de descrição em silêncio. Há teste, e o
+Sem isso uma reindexação apagaria todo o trabalho de descrição em silêncio. Há teste, e o
 comportamento foi confirmado contra o Postgres de produção.
 
 Remover módulo **não apaga documento**: desassocia na mesma transação.
