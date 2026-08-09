@@ -11,10 +11,11 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import type { RequisicaoAutenticada } from '../auth/requisicao-autenticada';
 import {
   ConfiguracaoService,
@@ -33,6 +34,11 @@ import {
   NotaGravada,
   TAMANHO_MAXIMO_BYTES,
 } from './conhecimento.service';
+import {
+  LeitorDeImagemService,
+  type TextoDoPrint,
+} from './leitor-de-imagem.service';
+import { TETO_DA_IMAGEM_BYTES } from './leitura-de-imagem';
 import { CriarNotaDto } from './dto/criar-nota.dto';
 import { EditarNotaDto } from './dto/editar-nota.dto';
 import { validarListarDocumentosDto } from './dto/listar-documentos.dto';
@@ -52,6 +58,7 @@ export class ConhecimentoController {
     private readonly biblioteca: BibliotecaService,
     private readonly configuracao: ConfiguracaoService,
     private readonly sugestao: SugestaoDescricaoService,
+    private readonly leitorDeImagem: LeitorDeImagemService,
   ) {}
 
   @HttpCode(200)
@@ -109,6 +116,26 @@ export class ConhecimentoController {
     @Req() requisicao: RequisicaoAutenticada,
   ): Promise<NotaGravada> {
     return this.conhecimento.criarNota(corpo, this.usuarioId(requisicao));
+  }
+
+  /**
+   * Lê um print de tela anexado pelo atendimento e devolve o texto que estava nele.
+   * A imagem não é gravada em lugar nenhum — só o texto sai daqui, já mascarado.
+   */
+  @Post('imagem')
+  @UseInterceptors(
+    FileInterceptor('imagem', {
+      limits: { fileSize: TETO_DA_IMAGEM_BYTES, files: 1 },
+    }),
+  )
+  lerImagem(
+    @UploadedFile() imagem?: { buffer: Buffer; mimetype: string },
+  ): Promise<TextoDoPrint> {
+    if (!imagem) {
+      throw new BadRequestException('nenhuma imagem enviada');
+    }
+
+    return this.leitorDeImagem.ler(imagem.buffer, imagem.mimetype);
   }
 
   @Post('arquivos')

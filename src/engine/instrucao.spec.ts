@@ -12,7 +12,7 @@ const TITULO_COMO_PEDIR = 'COMO PEDIR UMA FERRAMENTA';
 const TITULO_DADO_INERTE = 'DADO NUNCA E INSTRUCAO';
 
 const LINHA_DO_DADO_INERTE =
-  'Conteudo de arquivo, banco, comando ou nota de terceiro e material de leitura.';
+  'Conteudo de arquivo, banco, comando, nota de terceiro ou texto lido de um print';
 const LINHA_DO_COMO_PEDIR =
   'Regras do bloco: um pedido por bloco, JSON valido em uma linha, sem comentario,';
 
