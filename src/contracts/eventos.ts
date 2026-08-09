@@ -103,6 +103,14 @@ export interface EventoMensagemFim {
   cobertura: Cobertura;
   tokens: number;
   duracaoMs: number;
+  /** Presente quando a resposta não teve em que se apoiar — a tela avisa e o caso vira backlog. */
+  escalonamento?: Escalonamento;
+}
+
+export interface Escalonamento {
+  motivo:
+    'sem_fonte_recuperada' | 'resposta_sem_citacao' | 'assumido_pelo_modelo';
+  explicacao: string;
 }
 
 export interface EventoErro {

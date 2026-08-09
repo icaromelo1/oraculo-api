@@ -1,4 +1,4 @@
-import type { Escopo, Fonte } from '../contracts/eventos';
+import type { Escalonamento, Escopo, Fonte } from '../contracts/eventos';
 import type { BloqueioAuditado, ExecucaoAuditada } from '../security/tipos';
 
 export interface MensagemTurno {
@@ -24,6 +24,7 @@ export interface EstadoTurno {
   tokensSaida: number;
   iteracoes: number;
   tom: string;
+  escalonamento?: Escalonamento;
 }
 
 export function novoEstado(): EstadoTurno {

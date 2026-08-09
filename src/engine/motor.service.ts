@@ -12,6 +12,7 @@ import { LLM_PROVIDER, type LlmProvider } from '../providers/llm-provider';
 import { SecurityService } from '../security/security.service';
 import type { AlcancePerfil, OcorrenciaRedacao } from '../security/tipos';
 import { calcularCobertura } from './cobertura';
+import { decidirEscalonamento } from './escalonamento';
 import { FluxoResposta } from './fluxo-resposta';
 import { lerMapaExibicao } from './caminho-exibicao';
 import { construirFonte } from './fonte';
@@ -107,11 +108,23 @@ export class MotorOraculo {
         };
       }
 
+      const cobertura = calcularCobertura(estado.resposta, estado.idsValidos);
+      const escalonamento = decidirEscalonamento({
+        cobertura,
+        fontesRecuperadas: estado.idsValidos.size,
+        texto: estado.resposta,
+      });
+
+      if (escalonamento) {
+        estado.escalonamento = escalonamento;
+      }
+
       yield {
         tipo: 'mensagem.fim',
-        cobertura: calcularCobertura(estado.resposta, estado.idsValidos),
+        cobertura,
         tokens: estado.tokens,
         duracaoMs: Date.now() - inicio,
+        ...(escalonamento ? { escalonamento } : {}),
       };
     } finally {
       await this.auditar(pergunta, contexto, estado, Date.now() - inicio);
@@ -525,7 +538,11 @@ export class MotorOraculo {
         bloqueios: estado.bloqueios,
         fontes: estado.fontes.size,
         resultado: estado.resposta,
-        tom: estado.tom,
+        // Escalonamento vira o tom do turno: é assim que a auditoria devolve,
+        // sem tabela nova, a lista do que o Oráculo não soube responder.
+        tom: estado.escalonamento
+          ? `escalonado:${estado.escalonamento.motivo}`
+          : estado.tom,
         duracaoMs,
         modelo: this.provedor.nome,
       });
