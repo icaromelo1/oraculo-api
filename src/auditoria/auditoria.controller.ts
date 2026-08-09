@@ -27,6 +27,11 @@ export class AuditoriaController {
     return this.auditoria.resumo();
   }
 
+  @Get('lacunas')
+  lacunas() {
+    return this.auditoria.lacunas();
+  }
+
   @Get(':id')
   async detalhe(@Param('id') id: string) {
     const registro = await this.auditoria.buscarPorId(id);

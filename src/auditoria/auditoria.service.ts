@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { In, Like, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { Aprovacao, Auditoria, StatusAprovacao } from '../database/entities';
 import type { ListarAuditoriaDto } from './dto/listar-auditoria.dto';
 import {
@@ -9,10 +9,12 @@ import {
   mapearDetalhe,
   mapearRegistro,
 } from './mapeamento';
+import { agruparLacunas, PREFIXO_ESCALONADO, type Lacuna } from './lacunas';
 import type { CartaoResumo, ListaAuditoria, RegistroAuditoria } from './tipos';
 
 const JANELA_RESUMO_HORAS = 24;
 const TONS_DE_BLOQUEIO_DEDICADO = ['bloqueio', 'aprovacao_exigida'];
+const JANELA_LACUNAS_DIAS = 30;
 
 @Injectable()
 export class AuditoriaService {
@@ -75,6 +77,28 @@ export class AuditoriaService {
       pagina: filtro.pagina,
       porPagina: filtro.porPagina,
     };
+  }
+
+  /**
+   * O que o Oráculo não soube responder na janela recente.
+   * É o backlog de documentação: cada motivo agrupa as perguntas que ficaram sem resposta.
+   */
+  async lacunas(): Promise<Lacuna[]> {
+    const desde = new Date(
+      Date.now() - JANELA_LACUNAS_DIAS * 24 * 60 * 60 * 1000,
+    );
+
+    const linhas = await this.auditorias.find({
+      where: {
+        criadaEm: MoreThanOrEqual(desde),
+        tom: Like(`${PREFIXO_ESCALONADO}%`),
+      },
+      select: { tom: true, pergunta: true, criadaEm: true },
+      order: { criadaEm: 'DESC' },
+      take: 500,
+    });
+
+    return agruparLacunas(linhas);
   }
 
   async buscarPorId(id: string): Promise<RegistroAuditoria | null> {
