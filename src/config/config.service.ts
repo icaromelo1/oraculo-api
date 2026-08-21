@@ -26,6 +26,11 @@ export class OraculoConfig {
     return this.ler('PROVEDORES_PERMITIDOS');
   }
 
+  /** Provedor fixado no .env: a tela mostra, mas nenhuma escrita passa. */
+  get provedorTravado(): boolean {
+    return this.ler('PROVEDOR_TRAVADO');
+  }
+
   get provedor() {
     return {
       tipo: this.ler('MODEL_PROVIDER'),

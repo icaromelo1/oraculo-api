@@ -38,13 +38,25 @@ export class ProvedoresController {
     provedores: ProvedorResumido[];
     ativo: ProvedorResumido | null;
     tiposPermitidos: string[];
+    travado: boolean;
+    motivoDaTrava?: string;
   }> {
     const provedores = await this.configuracao.provedores();
+    const travado = this.config.provedorTravado;
 
     return {
       provedores,
       ativo: provedores.find((provedor) => provedor.ativo) ?? null,
       tiposPermitidos: [...this.config.provedoresPermitidos],
+      travado,
+      // A tela mostra a configuração mesmo travada: quem clonar o Oráculo precisa
+      // ver como está montado para reproduzir do próprio jeito.
+      ...(travado
+        ? {
+            motivoDaTrava:
+              'o provedor está fixado no .env desta instalação (PROVEDOR_TRAVADO=true). A configuração fica visível, mas só muda editando o .env no servidor e reiniciando a API.',
+          }
+        : {}),
     };
   }
 

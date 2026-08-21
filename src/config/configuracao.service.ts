@@ -559,10 +559,27 @@ export class ConfiguracaoService implements OnModuleInit {
     return this.escolherAtivo(this.instantaneo.provedores);
   }
 
+  /**
+   * Recusa qualquer escrita no provedor quando o .env o travou.
+   *
+   * Mora aqui, e não no controller, de propósito: é o único ponto por onde as três
+   * escritas passam. Rota nova esquecida na revisão continua travada.
+   */
+  private exigirProvedorDestravado(acao: string): void {
+    if (!this.config.provedorTravado) return;
+
+    throw new ForbiddenException(
+      `não dá para ${acao}: o provedor está fixado no .env desta instalação (PROVEDOR_TRAVADO=true). ` +
+        'Para mudar, edite o .env no servidor e reinicie a API.',
+    );
+  }
+
   async criarProvedor(
     novo: NovoProvedor,
     usuarioId?: string | null,
   ): Promise<ProvedorResumido> {
+    this.exigirProvedorDestravado('cadastrar provedor');
+
     const tipo = this.exigirTipoPermitido(novo.tipo);
     const nome = novo.nome.trim();
 
@@ -620,6 +637,8 @@ export class ConfiguracaoService implements OnModuleInit {
     id: string,
     usuarioId?: string | null,
   ): Promise<ProvedorResumido> {
+    this.exigirProvedorDestravado('trocar o provedor ativo');
+
     const alvo = await this.modelos.findOne({ where: { id } });
 
     if (!alvo) {
@@ -660,6 +679,8 @@ export class ConfiguracaoService implements OnModuleInit {
   }
 
   async removerProvedor(id: string, usuarioId?: string | null): Promise<void> {
+    this.exigirProvedorDestravado('remover provedor');
+
     const existente = await this.modelos.findOne({ where: { id } });
 
     if (!existente) {

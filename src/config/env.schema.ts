@@ -57,6 +57,13 @@ export const envSchema = z.object({
 
   MODEL_PROVIDER: z.enum(TIPOS_DE_PROVEDOR).default('cli'),
   PROVEDORES_PERMITIDOS: listaDeProvedores(),
+  // Trava o provedor nesta instalação: a tela passa a mostrar sem deixar alterar.
+  // Ausente ou 'false', o cadastro pela tela funciona normalmente — é o que permite
+  // a quem clonar o Oráculo configurar do próprio jeito.
+  PROVEDOR_TRAVADO: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((valor) => valor === 'true'),
   CLI_COMANDO: z.string().default('claude -p --output-format stream-json'),
   CLI_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   CLI_DIALETO: z.enum(['auto', 'claude', 'agy']).default('auto'),
